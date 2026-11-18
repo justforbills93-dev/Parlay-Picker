@@ -202,9 +202,10 @@
     const rem = res.headers.get('x-requests-remaining');
     if (rem != null) state.remaining = Number(rem);
     if (!res.ok) {
-      let msg = res.status + ' ' + res.statusText;
-      try { const j = await res.json(); if (j.message) msg = j.message; } catch { /* ignore */ }
-      throw new Error(msg);
+      let msg = res.status + ' ' + res.statusText, code = '';
+      try { const j = await res.json(); if (j.message) msg = j.message; if (j.error_code) code = j.error_code; } catch { /* ignore */ }
+      const err = new Error(msg); err.status = res.status; err.code = code;
+      throw err;
     }
     return res.json();
   }
@@ -233,7 +234,10 @@
     // Remember sports that only offer moneylines (most tennis), so later scans ask once.
     state.h2hOnly = state.h2hOnly || new Set();
     const lists = await pool(keys, 6, (k) => (state.h2hOnly.has(k) ? odds(k, 'h2h')
-      : odds(k, 'h2h,spreads,totals').catch(() => { state.h2hOnly.add(k); return odds(k, 'h2h'); })));
+      : odds(k, 'h2h,spreads,totals').catch((e) => {
+          if (e && (e.status === 401 || e.status === 429)) throw e; // bad key, no credits or rate limit: retrying won't help
+          state.h2hOnly.add(k); return odds(k, 'h2h');
+        })));
     const events = lists.filter(Boolean).flat();
 
     if (s.props) {
@@ -398,14 +402,15 @@
     state.error = null;
     try {
       if (IN_CLAUDE) throw new Error(`claude.ai previews can't load outside data. Open the live site: ${LIVE_SITE}`);
-      let events = null, keyErr = null;
+      let events = null, keyErr = null, keyOut = false;
       if (hasKey()) {
-        try { events = await scanLive(); state.mode = 'odds'; } catch (e) { keyErr = e.message || String(e); }
+        try { events = await scanLive(); state.mode = 'odds'; } catch (e) { keyErr = e.message || String(e); keyOut = !!(e && e.code === 'OUT_OF_USAGE_CREDITS'); }
       }
       if (!events) {
         events = await scanEspn();
         state.mode = 'espn';
-        state.keyNote = keyErr ? `Your Odds API key didn't work (${keyErr}), so this scan used the free DraftKings feed.` : '';
+        state.keyNote = keyOut ? 'Your Odds API key is out of credits for now (the free plan resets monthly), so this scan used the free DraftKings feed. Your key is still saved.'
+          : keyErr ? `Your Odds API key didn't work (${keyErr}), so this scan used the free DraftKings feed.` : '';
       } else state.keyNote = '';
       if (!events.length) throw new Error(`No games with posted lines ${windowLabel()} for ${keysChecked()}. Try a longer day range or more sports.`);
       const now = Date.now();
@@ -955,7 +960,7 @@
     const keyLink = 'get a free key at <a href="https://the-odds-api.com/" target="_blank" rel="noopener">the-odds-api.com</a> and paste it in <a href="#" id="openSet2">Settings</a>';
     if (state.error) {
       n.innerHTML = `<b>${have ? 'Couldn\'t refresh, showing the last good scan.' : 'Couldn\'t load odds.'}</b> ${esc(state.error)} ` +
-        `Retrying automatically. <a href="#" id="openSet2">Open Settings</a> · <a href="#" id="resetSet">Reset my settings to defaults</a>`;
+        `Retrying automatically. <a href="#" id="openSet2">Open Settings</a> · <a href="#" id="resetSet">Reset my settings to defaults (keeps your API key)</a>`;
     } else if (state.mode === 'espn') {
       const need = keyNeededGroups();
       n.innerHTML = `<b>Live:</b> real games with DraftKings lines, refreshed every minute. ` +
@@ -1257,7 +1262,12 @@
   document.addEventListener('click', (e) => {
     if (e.target.id !== 'resetSet') return;
     e.preventDefault();
-    try { localStorage.removeItem('pp-settings'); } catch { /* ignore */ }
+    try {
+      let keep = '';
+      try { keep = (JSON.parse(localStorage.getItem('pp-settings') || '{}').apiKey || '').trim(); } catch { /* ignore */ }
+      if (keep) localStorage.setItem('pp-settings', JSON.stringify({ apiKey: keep })); // reset everything except the key
+      else localStorage.removeItem('pp-settings');
+    } catch { /* ignore */ }
     location.reload();
   });
 })();
