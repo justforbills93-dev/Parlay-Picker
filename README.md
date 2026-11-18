@@ -72,7 +72,7 @@ tennis, MMA, boxing, cricket, rugby, AFL and more). Futures-only markets (golf w
 can't go in daily parlays. Game research covers the US leagues and the major soccer leagues ESPN tracks.
 
 ## What it does
-- **Goal box**: understands "turn $10 into $100", "bet $20 to win $500", "safest bet for $25".
+- **Goal boxes**: type an amount in **Turn** and the amount you want it to become in **into** (e.g. Turn $10 into $100). Quick-pick chips fill both boxes.
 - **Risk spectrum**: the best parlay at 5 levels, from Safest (~1.8x) to Moonshot (~60x).
 - **Best single picks**: the biggest gaps between the fair chance and the best price at any book, with every book's odds side by side.
 - **Auto re-scan** every minute on the free feed (the Odds API key timer follows Settings, default 15 min) and when you come back to the tab. Only games that haven't started are used.

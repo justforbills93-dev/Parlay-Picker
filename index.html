@@ -151,7 +151,13 @@
   .placelist li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
   .placelist .o { text-align: right; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; font-weight: 700; white-space: nowrap; }
   #copyText { width: 100%; min-height: 90px; font: inherit; font-size: 13px; }
-  .ask { flex-wrap: wrap; }
+  .ask { flex-wrap: wrap; align-items: flex-end; }
+  .ask label.amt { display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 700; color: var(--muted); flex: 1 1 130px; min-width: 120px; }
+  .ask .money { display: flex; align-items: center; border: 2px solid var(--line); border-radius: 12px; background: var(--bg); padding-left: 12px; }
+  .ask .money:focus-within { border-color: var(--brand); }
+  .ask .money b { font-size: 18px; color: var(--muted); }
+  .ask .money input { flex: 1; min-width: 0; border: 0; background: transparent; padding: 12px 12px 12px 4px; font-size: 18px; border-radius: 12px; }
+  .ask .money input:focus { outline: none; }
   .ask select { font: inherit; padding: 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); color: var(--ink); }
   @media (max-width: 640px) { .ask input { flex-basis: 100%; } .ask select, .ask button { flex: 1; } }
   button.add { width: 28px; height: 28px; padding: 0; border-radius: 50%; font-weight: 800; line-height: 1; margin-top: 4px;
@@ -244,9 +250,11 @@
 
   <div class="card hero">
     <h1>What do you want to win today?</h1>
-    <p class="sub" style="margin:0">Type it like you'd say it. We'll find the parlay with the best chance of getting you there.</p>
+    <p class="sub" style="margin:0">Enter what you want to bet and what you want it to become. We'll find the parlay with the best chance of getting you there.</p>
     <form class="ask" id="askForm">
-      <input id="ask" value="I want to turn $10 into $100" aria-label="Your goal" autocomplete="off">
+      <input type="hidden" id="ask" value="Turn $10 into $100">
+      <label class="amt"><span>Turn</span><div class="money"><b>$</b><input id="turnAmt" type="number" min="0.01" step="any" inputmode="decimal" value="10" autocomplete="off"></div></label>
+      <label class="amt"><span>into</span><div class="money"><b>$</b><input id="intoAmt" type="number" min="0.01" step="any" inputmode="decimal" value="100" autocomplete="off"></div></label>
       <select id="daySelect" aria-label="Which days">
         <option value="today">Today</option>
         <option value="tomorrow">Tomorrow</option>
@@ -264,12 +272,13 @@
       </select>
       <button class="primary" type="submit">Find picks</button>
     </form>
+    <div class="note" id="goalHint" style="margin-top:6px" hidden></div>
     <div class="chips" id="examples">
-      <button class="chip">Turn $10 into $100</button>
-      <button class="chip">Turn $20 into $50</button>
-      <button class="chip">Turn $5 into $500</button>
-      <button class="chip">Safest bet for $25</button>
-      <button class="chip">Bet $10 to win $1000</button>
+      <button type="button" class="chip" data-turn="10" data-into="100">$10 → $100</button>
+      <button type="button" class="chip" data-turn="20" data-into="50">$20 → $50</button>
+      <button type="button" class="chip" data-turn="5" data-into="500">$5 → $500</button>
+      <button type="button" class="chip" data-turn="25" data-into="45">Safest: $25 → $45</button>
+      <button type="button" class="chip" data-turn="10" data-into="1010">$10 → $1,010 (win $1,000)</button>
     </div>
     <div class="filters" id="sportBar"></div>
     <div class="filters" id="sportFilters"></div>
@@ -416,8 +425,8 @@
   </form>
 </dialog>
 
-<script src="engine.js?v=20261118b"></script>
-<script src="research.js?v=20261118b"></script>
-<script src="app.js?v=20261118b"></script>
+<script src="engine.js?v=20261118c"></script>
+<script src="research.js?v=20261118c"></script>
+<script src="app.js?v=20261118c"></script>
 </body>
 </html>

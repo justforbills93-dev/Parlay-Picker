@@ -1131,12 +1131,28 @@
     renderSportBar();
     scan();
   });
-  $('askForm').addEventListener('submit', (e) => { e.preventDefault(); renderGoal(); renderSpectrum(); });
+  // "Turn [ ] into [ ]" boxes feed the same goal text the engine already understands.
+  function syncGoal() {
+    const t = parseFloat($('turnAmt').value), i = parseFloat($('intoAmt').value);
+    const ok = t > 0 && i > 0;
+    const hint = $('goalHint');
+    hint.hidden = ok && i > t;
+    if (!ok) hint.textContent = 'Type how much you want to bet in "Turn" and how much you want it to become in "into".';
+    else if (i <= t) hint.textContent = '"into" should be more than "Turn", since you want to win money.';
+    if (ok && i > t) $('ask').value = `Turn $${t} into $${i}`;
+    return ok && i > t;
+  }
+  function goalChanged() { if (syncGoal()) { renderGoal(); renderSpectrum(); renderSlip(); } }
+  $('askForm').addEventListener('submit', (e) => { e.preventDefault(); goalChanged(); });
+  let goalTimer;
+  for (const id of ['turnAmt', 'intoAmt']) $(id).addEventListener('input', () => { clearTimeout(goalTimer); goalTimer = setTimeout(goalChanged, 250); });
   $('examples').addEventListener('click', (e) => {
-    if (!e.target.matches('.chip')) return;
-    $('ask').value = e.target.textContent;
-    renderGoal(); renderSpectrum();
+    const c = e.target.closest('.chip[data-turn]');
+    if (!c) return;
+    $('turnAmt').value = c.dataset.turn; $('intoAmt').value = c.dataset.into;
+    goalChanged();
   });
+  syncGoal();
   $('sportFilters').addEventListener('click', (e) => {
     const k = e.target.dataset.sport;
     if (k === undefined) return;
