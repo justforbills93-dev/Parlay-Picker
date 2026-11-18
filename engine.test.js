@@ -68,3 +68,17 @@ test('research: match game, read injuries/predictor, block injured props', () =>
   assert.ok(legs[1].blocked);
   assert.strictEqual(E.findParlays(legs, 1.9, { avoidUncertain: true }).length, 0);
 });
+
+test('exact leg counts: lands on target, one pick per game, explains impossible sizes', () => {
+  const legs = E.buildLegs(D.generate(new Date('2026-11-18T12:00:00Z')));
+  const rows = E.findByLegCount(legs, 10, { maxLegs: 12 });
+  assert.ok(rows.length >= 4, 'several parlay sizes reach 10x');
+  for (const p of rows) {
+    assert.ok(p.mult >= 10 / 1.051 && p.mult <= 10 * 1.251, `${p.legs.length} legs pays ${p.mult}`);
+    assert.strictEqual(new Set(p.legs.map((l) => l.eventId)).size, p.legs.length);
+  }
+  const n = E.gameCount(legs);
+  const big = E.findExact(legs, 1000, Math.min(n, 9));
+  assert.ok(big && big.exact && big.legs.length === Math.min(n, 9), 'long parlays are built when the payout allows');
+  assert.ok(E.minPayout(legs, 3) <= E.minPayout(legs, 4));
+});

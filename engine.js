@@ -158,9 +158,19 @@
    * with the best chance of winning. Max one leg per game so legs stay
    * independent (same-game legs are correlated and books price them differently).
    */
+  function legType(l) {
+    return l.isProp ? 'prop' : l.market === 'h2h' ? 'ml' : l.market === 'spreads' ? 'spread' : l.market === 'totals' ? 'total' : 'other';
+  }
+
+  /**
+   * o.legs = exact number of legs (search steers each step toward the target);
+   * otherwise any count from 1 to o.maxLegs. o.types = Set of leg types to mix
+   * ('ml', 'spread', 'total', 'prop').
+   */
   function findParlays(legs, target, o = {}) {
-    const maxLegs = o.maxLegs ?? 8;
-    const W = o.beam ?? 300;
+    const exactN = o.legs || 0;
+    const maxLegs = exactN || (o.maxLegs ?? 8);
+    const W = o.beam ?? (exactN ? 250 : 300);
     const count = o.count ?? 3;
     const logT = Math.log(Math.max(target, 1.01));
     const lo = logT - Math.log(o.tolLow ?? 1.3);
@@ -172,8 +182,10 @@
       .filter((l) => o.props !== false || !l.isProp)
       .filter((l) => !l.blocked && !(o.avoidUncertain && (l.starOut || l.starQuestionable)))
       .filter((l) => !(o.avoidTired && l.fatigued))
+      .filter((l) => !o.types || o.types.has(legType(l)))
+      .filter((l) => Math.log(l.price) <= hi)
       .sort((a, b) => b.ev - a.ev)
-      .slice(0, o.poolSize ?? 150)
+      .slice(0, o.poolSize ?? (exactN ? 400 : 150))
       .map((l, idx) => ({ l, idx, lp: Math.log(l.price), lq: Math.log(l.prob) }));
 
     const finals = [];
@@ -191,8 +203,10 @@
           events.add(p.l.eventId);
           const ns = { legs: s.legs.concat(p.l), lp, lq: s.lq + p.lq, events, last: p.idx };
           next.push(ns);
-          all.push(ns);
-          if (lp >= lo) finals.push(ns);
+          if (!exactN || depth === exactN) {
+            all.push(ns);
+            if (lp >= lo) finals.push(ns);
+          }
         }
       }
       // Keep the most promising partial parlays: high value, and closer to target.
@@ -201,6 +215,8 @@
     }
 
     function score(s) {
+      // Exact count: stay near the even-split path (each leg ≈ target^(1/n)).
+      if (exactN) return s.lq + s.lp - Math.abs(s.lp - (logT * s.legs.length) / exactN);
       return s.lq + s.lp - 0.15 * Math.max(0, logT - s.lp) / Math.max(logT, 0.1);
     }
     function finalScore(s) {
@@ -227,6 +243,104 @@
     }
 
     return picked.map((s) => summarize(s.legs, exact));
+  }
+
+  function eligible(legs, o) {
+    return legs
+      .filter((l) => l.prob >= 0.05 && l.prob <= 0.97 && l.price > 1.04)
+      .filter((l) => !o.sports || o.sports.has(l.sport))
+      .filter((l) => o.props !== false || !l.isProp)
+      .filter((l) => !l.blocked && !(o.avoidUncertain && (l.starOut || l.starQuestionable)))
+      .filter((l) => !(o.avoidTired && l.fatigued))
+      .filter((l) => !o.types || o.types.has(legType(l)));
+  }
+
+  /**
+   * Best parlay with exactly n legs (one per game) paying about `target`.
+   * Maximises the chance of winning, sum(log p), subject to the payout,
+   * sum(log price), landing in the target band. A multiplier `lam` trades
+   * chance against price: each game contributes its best leg by
+   * log p + lam·log price, the n best games are taken, and `lam` is
+   * bisected until the payout hits the target. Swaps then polish the result.
+   */
+  function findExact(legs, target, n, o = {}) {
+    const logT = Math.log(Math.max(target, 1.01));
+    // Pay at least ~95% of the goal, at most 25% over it.
+    const lo = logT - Math.log(o.tolLow ?? 1.05), hi = logT + Math.log(o.tolHigh ?? 1.25);
+    const byEvent = new Map();
+    for (const l of eligible(legs, o)) {
+      const x = { l, lp: Math.log(l.price), lq: Math.log(l.prob) };
+      if (!byEvent.has(l.eventId)) byEvent.set(l.eventId, []);
+      byEvent.get(l.eventId).push(x);
+    }
+    const events = [...byEvent.values()];
+    if (events.length < n) return null;
+
+    const pickFor = (lam) => events
+      .map((opts) => opts.reduce((b, x) => (x.lq + lam * x.lp > b.lq + lam * b.lp ? x : b)))
+      .sort((a, b) => (b.lq + lam * b.lp) - (a.lq + lam * a.lp))
+      .slice(0, n);
+    const sumLp = (set) => set.reduce((a, x) => a + x.lp, 0);
+
+    let a = -6, b = 6, best = null;
+    for (let i = 0; i < 50; i++) {
+      const mid = (a + b) / 2;
+      const set = pickFor(mid);
+      const lp = sumLp(set);
+      if (lp >= lo && lp <= hi && (!best || set.reduce((s, x) => s + x.lq, 0) > best.lq)) {
+        best = { set, lq: set.reduce((s, x) => s + x.lq, 0) };
+      }
+      if (lp < logT) a = mid; else b = mid;
+    }
+    let set = best ? best.set : pickFor((a + b) / 2);
+
+    // Local search: repeatedly make the single swap (any leg for any leg from an
+    // unused game, or another leg from the same game) that first gets the payout
+    // into the band, then raises the chance of winning.
+    const dist = (lp) => (lp < lo ? lo - lp : lp > hi ? lp - hi : 0);
+    const all = events.flat();
+    for (let move = 0; move < 60; move++) {
+      const curLp = sumLp(set), curD = dist(curLp);
+      const used = new Set(set.map((x) => x.l.eventId));
+      let bestMove = null, bestD = curD, bestQ = 0;
+      for (let i = 0; i < set.length; i++) {
+        const base = curLp - set[i].lp;
+        for (const x of all) {
+          if (x === set[i] || (used.has(x.l.eventId) && x.l.eventId !== set[i].l.eventId)) continue;
+          const d = dist(base + x.lp), dq = x.lq - set[i].lq;
+          if (d < bestD - 1e-9 || (Math.abs(d - bestD) <= 1e-9 && dq > bestQ + 1e-9)) {
+            bestMove = [i, x]; bestD = d; bestQ = Math.abs(d - bestD) <= 1e-9 ? dq : dq;
+          }
+        }
+      }
+      if (!bestMove) break;
+      set = set.slice();
+      set[bestMove[0]] = bestMove[1];
+    }
+    const lp = sumLp(set);
+    return summarize(set.map((x) => x.l), lp >= lo && lp <= hi);
+  }
+
+  /** Smallest payout possible with n legs (the n shortest prices, one per game). */
+  function minPayout(legs, n, o = {}) {
+    const by = new Map();
+    for (const l of eligible(legs, o)) if (!by.has(l.eventId) || l.price < by.get(l.eventId)) by.set(l.eventId, l.price);
+    const prices = [...by.values()].sort((a, b) => a - b);
+    if (prices.length < n) return null;
+    return prices.slice(0, n).reduce((a, b) => a * b, 1);
+  }
+  function gameCount(legs, o = {}) {
+    return new Set(eligible(legs, o).map((l) => l.eventId)).size;
+  }
+
+  /** Best parlay for every leg count that can reach the target. */
+  function findByLegCount(legs, target, o = {}) {
+    const out = [];
+    for (let n = 1; n <= (o.maxLegs ?? 12); n++) {
+      const p = findExact(legs, target, n, o);
+      if (p && p.exact) out.push(p);
+    }
+    return out;
   }
 
   function summarize(legs, exact = true) {
@@ -298,6 +412,6 @@
   return {
     SHARP_BOOKS, MARKET_LABELS, RISK_TIERS,
     americanToDecimal, decimalToAmerican, fmtAmerican,
-    buildLegs, findParlays, summarize, riskLevel, oneIn, parseGoal,
+    buildLegs, findParlays, findExact, findByLegCount, minPayout, gameCount, legType, summarize, riskLevel, oneIn, parseGoal,
   };
 });

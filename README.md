@@ -23,6 +23,13 @@ travels inside that request URL to Firecrawl. Opened as a normal file or website
 BetRivers, Fanatics, ESPN BET, Bovada, BetOnline, Pinnacle and more, depending on the region you pick.
 Settings shows roughly how many credits each scan uses. Raise the re-scan time to stay inside the free plan.
 
+## Parlay sizes
+Parlays mix moneylines, spreads, totals and player props (one pick per game). The **Mix** chips limit which types are used.
+The **Legs** chips (Best, 1–15) show the best parlay of exactly that size, and **Every parlay size** lists the best
+parlay at each size that pays your goal, with its chance of winning. When a size can't work, it says why, e.g.
+"even the 9 safest picks together pay 14.1x". More games (more sports selected) make longer parlays possible.
+At the same payout, more legs almost always means a lower chance, because each leg adds the sportsbook's fee.
+
 ## Sports
 Tap **Choose sports** under the goal box. With an API key the list is loaded live from the odds feed, so it covers
 every sport and league that has betting lines right now (NFL, NBA, NHL, MLB, college, dozens of soccer leagues,

@@ -52,7 +52,10 @@
     remaining: null, error: null, filter: new Set(), selectedTier: null, scanning: false,
     research: {}, researchNote: '', catalog: loadCatalog(), loads: loadBox(),
     mode: '', demoReason: '', memo: new Map(),
+    legCount: 0, openRow: 0, types: new Set(['ml', 'spread', 'total', 'prop']),
   };
+  const MAX_LEGS = 15;
+  const TYPE_NAMES = { ml: 'Moneylines', spread: 'Spreads', total: 'Totals', prop: 'Player props' };
 
   function loadCatalog() {
     try {
@@ -432,22 +435,92 @@
       box.innerHTML = '';
       return;
     }
-    const opts = { sports: sportsFilter(), count: 3, avoidUncertain: state.settings.avoidUncertain, avoidTired: state.settings.avoidTired };
-    if (mult > 2000) opts.maxLegs = 12;
-    const ps = E.findParlays(state.legs, mult, opts);
+    const opts = baseOpts();
+    const games = E.gameCount(state.legs, opts);
+    const rows = [];
+    for (let n = 1; n <= Math.min(MAX_LEGS, Math.max(games, 2)); n++) {
+      const p = n <= games ? E.findExact(state.legs, mult, n, opts) : null;
+      rows.push({ n, p: p && p.exact ? p : null, min: E.minPayout(state.legs, n, opts) });
+    }
+    state.rows = rows;
+
+    let ps;
+    if (state.legCount) {
+      const row = rows.find((r) => r.n === state.legCount);
+      ps = row && row.p ? [row.p] : [];
+    } else {
+      // Best overall: free search across any length plus the best at each
+      // exact length, ranked by chance of winning.
+      const pool = E.findParlays(state.legs, mult, { ...opts, count: 3, maxLegs: 8 }).filter((p) => p.exact)
+        .concat(rows.filter((r) => r.p).map((r) => r.p))
+        .sort((a, b) => b.prob - a.prob);
+      ps = [];
+      for (const p of pool) {
+        const ids = new Set(p.legs.map((l) => l.id));
+        if (ps.some((q) => q.legs.length === p.legs.length && q.legs.every((l) => ids.has(l.id)))) continue;
+        ps.push(p);
+        if (ps.length >= 3) break;
+      }
+      if (!ps.length) ps = E.findParlays(state.legs, mult, { ...opts, count: 3, maxLegs: 12 });
+    }
+
+    const legChips = `<div class="filters" id="legPick"><span>Legs:</span>
+      <button type="button" class="chip ${state.legCount ? '' : 'on'}" data-legs="0">Best</button>
+      ${rows.map((r) => `<button type="button" class="chip ${state.legCount === r.n ? 'on' : ''} ${r.p ? '' : 'dim'}" data-legs="${r.n}">${r.n}</button>`).join('')}</div>
+      <div class="filters" id="typePick"><span>Mix:</span>
+      ${Object.entries(TYPE_NAMES).map(([k, v]) => `<button type="button" class="chip ${state.types.has(k) ? 'on' : ''}" data-type="${k}">${v}</button>`).join('')}</div>`;
+
     if (!ps.length) {
-      ans.innerHTML = '<span class="bad">Not enough games right now to build that. Try a smaller goal or add sports.</span>';
-      box.innerHTML = '';
+      const row = rows.find((r) => r.n === state.legCount);
+      ans.innerHTML = `Goal: <b>${money(g.stake)} → ${money(target)}</b> (${mult.toFixed(1)}x).<br><span class="warn">${esc(whyNot(row, mult, games))}</span>`;
+      box.innerHTML = `<h2>Your best plays</h2>${legChips}${legTable(rows, g.stake, mult, games)}`;
       return;
     }
     const best = ps[0];
     const tier = best.risk;
     ans.innerHTML = `Goal: <b>${money(g.stake)} → ${money(target)}</b> (${mult.toFixed(1)}x).
-      Best shot: <b>${pct(best.prob)}</b> — that's <b style="color:${tier.color}">${tier.short.toLowerCase()}</b>.
+      Best shot: <b>${pct(best.prob)}</b> with ${best.legs.length} leg${best.legs.length > 1 ? 's' : ''} — that's <b style="color:${tier.color}">${tier.short.toLowerCase()}</b>.
       ${best.exact ? '' : '<br><span class="warn">Couldn\'t hit your exact number with today\'s games — these are the closest.</span>'}`;
     box.innerHTML = `<h2>Your best plays</h2>
-      <p class="sub">Ranked by chance of winning. Each pick shows the sportsbook paying the most right now.</p>
-      <div class="grid">${ps.map((p, i) => parlayCard(p, g.stake, i === 0 ? '⭐ Top pick' : 'Option ' + (i + 1))).join('')}</div>`;
+      <p class="sub">Ranked by chance of winning. Mixes moneylines, spreads, totals and props, one pick per game. Tap a leg count to see the best parlay of that size.</p>
+      ${legChips}
+      <div class="grid">${ps.map((p, i) => parlayCard(p, g.stake, state.legCount ? `Best ${p.legs.length}-leg parlay` : i === 0 ? '⭐ Top pick' : 'Option ' + (i + 1))).join('')}</div>
+      ${legTable(rows, g.stake, mult, games)}`;
+  }
+
+  function baseOpts() {
+    return {
+      sports: sportsFilter(), avoidUncertain: state.settings.avoidUncertain, avoidTired: state.settings.avoidTired,
+      types: state.types.size === 4 ? null : state.types,
+    };
+  }
+
+  function whyNot(row, mult, games) {
+    if (!row) return 'Pick a leg count.';
+    if (row.n > games) return `${row.n} legs needs ${row.n} different games, and only ${games} have lines right now. Add more sports.`;
+    if (row.min != null && row.min > mult * 1.25) {
+      return `A ${row.n}-leg parlay can't pay as little as ${mult.toFixed(1)}x today: even the ${row.n} safest picks together pay ${row.min.toFixed(1)}x. Add more sports for more heavy favorites, or raise your goal.`;
+    }
+    return `No ${row.n}-leg combination lands on ${mult.toFixed(1)}x with today's lines.`;
+  }
+
+  function legTable(rows, stake, mult, games) {
+    const best = Math.max(...rows.filter((r) => r.p).map((r) => r.p.prob), 0);
+    return `<h2>Every parlay size</h2>
+      <p class="sub">The best parlay for each number of legs that pays your goal. More legs means stacking more sportsbook fees, so the chance usually drops as legs go up. Tap a row.</p>
+      <div class="card" style="padding:6px 12px"><div class="tablewrap"><table>
+      <thead><tr><th>Legs</th><th style="text-align:right">Pays</th><th style="text-align:right">Win chance</th><th class="hide-sm">Mix</th><th>Risk</th></tr></thead>
+      <tbody>${rows.map((r) => r.p ? `
+        <tr class="row ${state.openRow === r.n ? 'open' : ''}" data-row="${r.n}">
+          <td><b>${r.n}</b>${r.p.prob === best ? ' <span class="good">★ best chance</span>' : ''}</td>
+          <td class="num">${money(stake * r.p.mult)}</td>
+          <td class="num">${pct(r.p.prob)} <span class="note">(1 in ${E.oneIn(r.p.prob)})</span></td>
+          <td class="hide-sm note">${[...new Set(r.p.legs.map((l) => TYPE_NAMES[E.legType(l)] || 'Other'))].join(', ')}</td>
+          <td><span class="tag" style="background:${r.p.risk.color}">${r.p.risk.short}</span></td>
+        </tr>
+        ${state.openRow === r.n ? `<tr><td colspan="5">${parlayCard(r.p, stake, `Best ${r.n}-leg parlay`)}</td></tr>` : ''}` : `
+        <tr><td><b>${r.n}</b></td><td colspan="4" class="note">${esc(whyNot(r, mult, games))}</td></tr>`).join('')}
+      </tbody></table></div></div>`;
   }
 
   function renderSpectrum() {
@@ -455,7 +528,7 @@
     const stake = g.stake || 10;
     $('specSub').textContent = `Best parlay at every risk level for a ${money(stake)} bet. Tap one to see the picks.`;
     if (!state.legs.length) { $('spectrum').innerHTML = '<div class="empty card" style="grid-column:1/-1">No games to scan.</div>'; return; }
-    const tiers = E.RISK_TIERS.map((t) => ({ t, p: E.findParlays(state.legs, t.target, { sports: sportsFilter(), count: 1, avoidUncertain: state.settings.avoidUncertain, avoidTired: state.settings.avoidTired })[0] }));
+    const tiers = E.RISK_TIERS.map((t) => ({ t, p: E.findParlays(state.legs, t.target, { ...baseOpts(), count: 1 })[0] }));
     let html = '<div class="bar"></div>';
     html += tiers.map(({ t, p }) => `
       <button class="card tier ${state.selectedTier === t.key ? 'sel' : ''}" data-tier="${t.key}">
@@ -709,6 +782,19 @@
     else if (state.filter.has(k)) state.filter.delete(k);
     else state.filter.add(k);
     renderFilters(); renderGoal(); renderSpectrum(); renderTopPicks(); renderResearch();
+  });
+  $('results').addEventListener('click', (e) => {
+    const lc = e.target.closest('[data-legs]');
+    if (lc) { state.legCount = Number(lc.dataset.legs); renderGoal(); return; }
+    const ty = e.target.closest('[data-type]');
+    if (ty) {
+      const k = ty.dataset.type;
+      if (state.types.has(k) && state.types.size > 1) state.types.delete(k); else state.types.add(k);
+      renderGoal(); renderSpectrum();
+      return;
+    }
+    const row = e.target.closest('tr[data-row]');
+    if (row) { const n = Number(row.dataset.row); state.openRow = state.openRow === n ? 0 : n; renderGoal(); }
   });
   $('spectrum').addEventListener('click', (e) => {
     const b = e.target.closest('[data-tier]');
