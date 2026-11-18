@@ -14,7 +14,11 @@ It starts in **demo mode** with sample odds (not real games) so you can try it r
 1. Get a free API key at https://the-odds-api.com (500 credits/month free; paid plans give more).
 2. Click **⚙ Settings**, paste the key, pick your sports, and press **Save & scan**.
 
-The key is stored only in your browser. The odds feed covers DraftKings, FanDuel, BetMGM, Caesars,
+The key is stored only in your browser.
+
+Inside a claude.ai private page, browsers block direct calls to outside sites, so the app sends each odds
+request through your Firecrawl connector instead (about 1 Firecrawl credit per request). Your Odds API key
+travels inside that request URL to Firecrawl. Opened as a normal file or website, the app calls the odds API directly. The odds feed covers DraftKings, FanDuel, BetMGM, Caesars,
 BetRivers, Fanatics, ESPN BET, Bovada, BetOnline, Pinnacle and more, depending on the region you pick.
 Settings shows roughly how many credits each scan uses. Raise the re-scan time to stay inside the free plan.
 

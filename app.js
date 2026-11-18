@@ -64,7 +64,54 @@
   }
 
   /* ---------- scanning ---------- */
+  // Two ways to reach the odds feed:
+  //  - opened as a normal web page: call the API directly from the browser;
+  //  - inside a claude.ai private page (outside calls are blocked there):
+  //    relay the request through the viewer's Firecrawl connector.
+  let mcpPromise = null;
+  function relay() {
+    if (!mcpPromise) {
+      mcpPromise = (window.claude && typeof window.claude.use === 'function')
+        ? window.claude.use('mcp').catch(() => null)
+        : Promise.resolve(null);
+    }
+    return mcpPromise;
+  }
+
+  const RELAY_HELP = {
+    server_not_connected: 'Live odds here go through Firecrawl. Add the Firecrawl connector in claude.ai Settings → Connectors, then press Scan now.',
+    selection_required: 'You have more than one Firecrawl connector. Choose one when claude.ai asks, then press Scan now.',
+    needs_reauth: 'Firecrawl needs to be reconnected. Reconnect it in claude.ai Settings → Connectors, then press Scan now.',
+    not_in_manifest: 'Firecrawl isn\'t allowed for this page. Allow it from the page\'s Permissions menu, then press Scan now.',
+    approval_required: 'This page needs your OK to use Firecrawl. Press Scan now and choose Allow.',
+    consent_required: 'This page needs your OK to use Firecrawl. Press Scan now and choose Allow.',
+    blocked_by_policy: 'Your organization blocks Firecrawl for this page, so live odds can\'t load here. Open index.html from the repo instead.',
+    server_unavailable: 'Firecrawl didn\'t answer. Wait a minute and press Scan now.',
+  };
+
+  async function getViaRelay(mcp, url) {
+    let result;
+    try {
+      result = await mcp.callTool('Firecrawl', 'firecrawl_scrape', {
+        url, formats: ['rawHtml'], maxAge: 0, storeInCache: false, proxy: 'basic',
+        objective: 'Fetch current sportsbook odds JSON for a parlay picker page.',
+      }, { cache: false });
+    } catch (e) {
+      throw new Error(RELAY_HELP[e && e.code] || ('Firecrawl error: ' + ((e && e.message) || 'unknown')));
+    }
+    let p = result.payload;
+    if (typeof p === 'string') { try { p = JSON.parse(p); } catch { /* keep text */ } }
+    const raw = p && typeof p === 'object' ? (p.rawHtml ?? p.data?.rawHtml) : p;
+    const status = p && (p.metadata?.statusCode ?? p.data?.metadata?.statusCode);
+    let body;
+    try { body = JSON.parse(String(raw).trim()); } catch { throw new Error('The odds feed sent back something unreadable. Press Scan now to try again.'); }
+    if (status >= 400 || (body && body.error_code)) throw new Error(body.message || ('Odds feed error ' + status));
+    return body;
+  }
+
   async function getJSON(url) {
+    const mcp = await relay();
+    if (mcp) return getViaRelay(mcp, url);
     const res = await fetch(url);
     const rem = res.headers.get('x-requests-remaining');
     if (rem != null) state.remaining = Number(rem);
@@ -266,7 +313,7 @@
     else { m.className = 'pill demo'; m.innerHTML = '<i class="dot"></i>Demo'; }
     $('demoNote').style.display = live() && !state.error ? 'none' : '';
     if (state.error) {
-      $('demoNote').innerHTML = `<b>Scan failed:</b> ${esc(state.error)}. Check your key in <a href="#" id="openSet2">Settings</a>.`;
+      $('demoNote').innerHTML = `<b>Scan failed.</b> ${esc(state.error)} <a href="#" id="openSet2">Open Settings</a>`;
     }
     updateClock();
   }
@@ -323,9 +370,11 @@
     const regions = f.regions.split(',').length;
     let per = f.sports.length * 3 * regions;
     if (f.props) per += f.sports.filter((k) => PROP_MARKETS[k]).length * f.propGames * 3 * regions;
+    const calls = 1 + f.sports.length + (f.props ? f.sports.filter((k) => PROP_MARKETS[k]).length * f.propGames : 0);
     const perDay = Math.round(per * (16 * 60 / f.refresh)); // ~16 waking hours
     $('creditEst').textContent = `≈ ${per} credits per scan · ≈ ${perDay.toLocaleString()} per day at this refresh rate ` +
-      `(free plan = 500/month — raise the refresh time or upgrade if that's too many).`;
+      `(free plan = 500/month — raise the refresh time or upgrade if that's too many).` +
+      (window.claude ? ` On this claude.ai page each scan also uses about ${calls} Firecrawl credits.` : '');
   }
 
   /* ---------- events ---------- */
