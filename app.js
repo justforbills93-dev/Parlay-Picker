@@ -5,12 +5,30 @@
   const R = window.ParlayResearch;
   const $ = (id) => document.getElementById(id);
 
-  const SPORTS = [
-    ['americanfootball_nfl', 'NFL'], ['basketball_nba', 'NBA'], ['icehockey_nhl', 'NHL'],
-    ['baseball_mlb', 'MLB'], ['americanfootball_ncaaf', 'College FB'], ['basketball_ncaab', 'College BB'],
-    ['soccer_epl', 'Premier League'], ['soccer_usa_mls', 'MLS'], ['basketball_wnba', 'WNBA'],
-    ['mma_mixed_martial_arts', 'UFC / MMA'],
-  ];
+  // Starter list for demo mode. With an API key, the full live list of every
+  // sport the odds feed covers replaces it (it changes with the seasons).
+  const FALLBACK_SPORTS = [
+    ['American Football', 'americanfootball_nfl', 'NFL'], ['American Football', 'americanfootball_ncaaf', 'NCAAF'],
+    ['American Football', 'americanfootball_cfl', 'CFL'], ['American Football', 'americanfootball_ufl', 'UFL'],
+    ['Basketball', 'basketball_nba', 'NBA'], ['Basketball', 'basketball_ncaab', 'NCAAB'], ['Basketball', 'basketball_wncaab', 'NCAAW'],
+    ['Basketball', 'basketball_wnba', 'WNBA'], ['Basketball', 'basketball_euroleague', 'Euroleague'], ['Basketball', 'basketball_nbl', 'NBL (Australia)'],
+    ['Ice Hockey', 'icehockey_nhl', 'NHL'], ['Ice Hockey', 'icehockey_ahl', 'AHL'], ['Ice Hockey', 'icehockey_sweden_hockey_league', 'SHL'],
+    ['Ice Hockey', 'icehockey_liiga', 'Liiga'],
+    ['Baseball', 'baseball_mlb', 'MLB'], ['Baseball', 'baseball_ncaa', 'NCAA Baseball'], ['Baseball', 'baseball_npb', 'NPB (Japan)'], ['Baseball', 'baseball_kbo', 'KBO (Korea)'],
+    ['Soccer', 'soccer_epl', 'EPL'], ['Soccer', 'soccer_efl_champ', 'Championship'], ['Soccer', 'soccer_spain_la_liga', 'La Liga'],
+    ['Soccer', 'soccer_germany_bundesliga', 'Bundesliga'], ['Soccer', 'soccer_italy_serie_a', 'Serie A'], ['Soccer', 'soccer_france_ligue_one', 'Ligue 1'],
+    ['Soccer', 'soccer_uefa_champs_league', 'Champions League'], ['Soccer', 'soccer_uefa_europa_league', 'Europa League'],
+    ['Soccer', 'soccer_usa_mls', 'MLS'], ['Soccer', 'soccer_mexico_ligamx', 'Liga MX'], ['Soccer', 'soccer_netherlands_eredivisie', 'Eredivisie'],
+    ['Soccer', 'soccer_portugal_primeira_liga', 'Primeira Liga'], ['Soccer', 'soccer_brazil_campeonato', 'Brazil Série A'],
+    ['Mixed Martial Arts', 'mma_mixed_martial_arts', 'MMA / UFC'], ['Boxing', 'boxing_boxing', 'Boxing'],
+    ['Tennis', 'tennis_atp_finals', 'ATP'], ['Tennis', 'tennis_wta_finals', 'WTA'],
+    ['Cricket', 'cricket_ipl', 'IPL'], ['Cricket', 'cricket_big_bash', 'Big Bash'], ['Cricket', 'cricket_test_match', 'Test Matches'],
+    ['Cricket', 'cricket_odi', 'One Day Internationals'], ['Cricket', 'cricket_international_t20', 'International T20'],
+    ['Rugby League', 'rugbyleague_nrl', 'NRL'], ['Rugby Union', 'rugbyunion_six_nations', 'Six Nations'],
+    ['Aussie Rules', 'aussierules_afl', 'AFL'], ['Lacrosse', 'lacrosse_pll', 'PLL'], ['Handball', 'handball_germany_bundesliga', 'Handball Bundesliga'],
+    ['Golf', 'golf_masters_tournament_winner', 'Masters (futures)', true], ['Politics', 'politics_us_presidential_election_winner', 'US Election (futures)', true],
+  ].map(([group, key, title, outrights]) => ({ group, key, title, active: true, has_outrights: !!outrights }));
+  const DEMO_SPORTS = new Set(['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'soccer_epl']);
   const PROP_MARKETS = {
     basketball_nba: 'player_points,player_rebounds,player_assists,player_threes',
     basketball_ncaab: 'player_points,player_rebounds,player_assists',
@@ -26,14 +44,32 @@
   const DEFAULTS = {
     apiKey: '', sports: ['americanfootball_nfl', 'basketball_nba', 'icehockey_nhl', 'americanfootball_ncaaf'],
     regions: 'us,us2', props: false, propGames: 3, refresh: 15, fmt: 'american',
-    research: true, avoidUncertain: true, researchMin: 60,
+    research: true, avoidUncertain: true, researchMin: 60, fatigue: true, avoidTired: false,
   };
 
   const state = {
     settings: load(), events: [], legs: [], scans: 0, lastScan: null, nextScan: null,
     remaining: null, error: null, filter: new Set(), selectedTier: null, scanning: false,
-    research: {}, researchNote: '',
+    research: {}, researchNote: '', catalog: loadCatalog(), loads: loadBox(),
   };
+
+  function loadCatalog() {
+    try {
+      const c = JSON.parse(localStorage.getItem('pp-catalog') || 'null');
+      if (c && Date.now() - c.at < 86400000 && c.list.length) return c.list;
+    } catch { /* ignore */ }
+    return FALLBACK_SPORTS;
+  }
+  function loadBox() {
+    try {
+      const b = JSON.parse(localStorage.getItem('pp-box') || '{}');
+      for (const k of Object.keys(b)) if (Date.now() - b[k].at > 4 * 86400000) delete b[k];
+      return b;
+    } catch { return {}; }
+  }
+  function saveBox() { try { localStorage.setItem('pp-box', JSON.stringify(state.loads)); } catch { /* full or blocked */ } }
+  const sportName = (k) => state.catalog.find((c) => c.key === k)?.title ||
+    FALLBACK_SPORTS.find((c) => c.key === k)?.title || state.legs.find((l) => l.sport === k)?.sportTitle || k;
 
   function load() {
     try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('pp-settings') || '{}') }; }
@@ -135,15 +171,21 @@
     const to = new Date(now.getTime() + HOURS_AHEAD * 3600000);
 
     // Free call: which sports are in season right now.
-    const active = new Set((await getJSON(`${API}/sports?apiKey=${key}`)).filter((x) => x.active).map((x) => x.key));
-    const keys = s.sports.filter((k) => active.has(k));
-    if (!keys.length) throw new Error('None of your chosen sports are in season. Pick more in Settings.');
+    const all = await getJSON(`${API}/sports?apiKey=${key}`);
+    if (Array.isArray(all) && all.length) {
+      state.catalog = all.map((x) => ({ key: x.key, group: x.group, title: x.title, active: x.active, has_outrights: x.has_outrights }));
+      try { localStorage.setItem('pp-catalog', JSON.stringify({ at: Date.now(), list: state.catalog })); } catch { /* ignore */ }
+    }
+    const playable = new Set(state.catalog.filter((x) => x.active && !x.has_outrights).map((x) => x.key));
+    const keys = s.sports.filter((k) => playable.has(k));
+    if (!keys.length) throw new Error('None of your chosen sports have games right now. Tap "Choose sports" to add more.');
 
-    const lists = await Promise.all(keys.map((k) =>
-      getJSON(`${API}/sports/${k}/odds?apiKey=${key}&regions=${s.regions}&markets=h2h,spreads,totals` +
-        `&oddsFormat=decimal&commenceTimeFrom=${isoNoMs(now)}&commenceTimeTo=${isoNoMs(to)}`)
-        .catch((e) => { console.warn(k, e); return []; })));
-    const events = lists.flat();
+    // Spreads/totals don't exist for every sport (tennis, MMA...), so ask for
+    // moneylines alone if the full request is refused.
+    const odds = (k, markets) => getJSON(`${API}/sports/${k}/odds?apiKey=${key}&regions=${s.regions}&markets=${markets}` +
+      `&oddsFormat=decimal&commenceTimeFrom=${isoNoMs(now)}&commenceTimeTo=${isoNoMs(to)}`);
+    const lists = await pool(keys, 6, (k) => odds(k, 'h2h,spreads,totals').catch(() => odds(k, 'h2h')));
+    const events = lists.filter(Boolean).flat();
 
     if (s.props) {
       const jobs = [];
@@ -200,8 +242,48 @@
         } catch (err) { failed++; throw err; }
       });
     }
+    addFatigue(events);
+    if (state.settings.fatigue) await loadPlayerLoads(events);
     const unsupported = events.filter((e) => !R.LEAGUES[e.sport_key]).length;
     state.researchNote = `research on ${matched}/${events.length - unsupported} games` + (failed ? ` (${failed} failed)` : '');
+  }
+
+  function addFatigue(events) {
+    for (const e of events) {
+      const r = state.research[e.id];
+      if (!r) continue;
+      r.home.fatigue = state.settings.fatigue ? R.teamFatigue(r.home, e.commence_time, e.sport_key, false) : null;
+      r.away.fatigue = state.settings.fatigue ? R.teamFatigue(r.away, e.commence_time, e.sport_key, true) : null;
+      if (!state.settings.fatigue) { r.home.load = null; r.away.load = null; }
+    }
+  }
+
+  // Minutes and starters from each team's last game (basketball, hockey, soccer).
+  // A finished game never changes, so each box score is fetched once.
+  async function loadPlayerLoads(events) {
+    const jobs = [];
+    for (const e of events) {
+      const r = state.research[e.id];
+      if (!r || !/basketball|hockey|soccer/.test(e.sport_key)) continue;
+      for (const side of [r.home, r.away]) {
+        const last = side.form[side.form.length - 1];
+        if (!last || !last.id) continue;
+        const ck = last.id + ':' + side.id;
+        if (state.loads[ck]) { side.load = state.loads[ck].load; continue; }
+        jobs.push({ side, ck, url: R.summaryUrl(e.sport_key, last.id), sport: e.sport_key });
+      }
+    }
+    // Both teams' entries share one box score when they played each other last.
+    const byUrl = new Map();
+    for (const j of jobs) { if (!byUrl.has(j.url)) byUrl.set(j.url, []); byUrl.get(j.url).push(j); }
+    await pool([...byUrl.entries()], 4, async ([url, js]) => {
+      const json = await getJSON(url);
+      for (const j of js) {
+        const load = R.parseLoad(json, j.side.id, j.sport);
+        if (load) { j.side.load = load; state.loads[j.ck] = { at: Date.now(), load }; }
+      }
+    });
+    saveBox();
   }
 
   async function scan() {
@@ -211,7 +293,8 @@
     $('scanBtn').textContent = 'Scanning…';
     state.error = null;
     try {
-      const events = live() ? await scanLive() : window.ParlayDemo.generate(new Date(), state.scans);
+      const events = live() ? await scanLive()
+        : window.ParlayDemo.generate(new Date(), state.scans).filter((e) => state.settings.sports.includes(e.sport_key) || !state.settings.sports.some((k) => DEMO_SPORTS.has(k)));
       const now = Date.now();
       state.events = events.filter((e) => new Date(e.commence_time).getTime() > now); // pre-game only
       let legs = E.buildLegs(state.events, { minBooks: live() ? 3 : 2 });
@@ -220,6 +303,7 @@
           try { await loadResearch(state.events); } catch (e) { state.researchNote = 'research unavailable'; console.warn(e); }
         } else {
           state.research = window.ParlayDemo.generateResearch(state.events);
+          addFatigue(state.events);
           state.researchNote = 'sample research';
         }
         legs = R.applyResearch(legs, state.research);
@@ -278,6 +362,7 @@
       const side = l.pick.startsWith(awayName) ? r.away : l.pick.startsWith(l.game.split(' @ ')[1]) ? r.home : null;
       if (side && side.form.length) bits.push(`<span>Last 5: ${side.form.map((f) => f.result).join('')}</span>`);
     }
+    for (const n of l.notes || []) bits.push(`<span class="good">${esc(n)}</span>`);
     for (const w of l.warnings || []) bits.push(`<span class="warn">⚠ ${esc(w)}</span>`);
     return bits.length ? `<div class="g rn">${bits.join(' · ')}</div>` : '';
   }
@@ -303,7 +388,7 @@
       box.innerHTML = '';
       return;
     }
-    const opts = { sports: sportsFilter(), count: 3, avoidUncertain: state.settings.avoidUncertain };
+    const opts = { sports: sportsFilter(), count: 3, avoidUncertain: state.settings.avoidUncertain, avoidTired: state.settings.avoidTired };
     if (mult > 2000) opts.maxLegs = 12;
     const ps = E.findParlays(state.legs, mult, opts);
     if (!ps.length) {
@@ -326,7 +411,7 @@
     const stake = g.stake || 10;
     $('specSub').textContent = `Best parlay at every risk level for a ${money(stake)} bet. Tap one to see the picks.`;
     if (!state.legs.length) { $('spectrum').innerHTML = '<div class="empty card" style="grid-column:1/-1">No games to scan.</div>'; return; }
-    const tiers = E.RISK_TIERS.map((t) => ({ t, p: E.findParlays(state.legs, t.target, { sports: sportsFilter(), count: 1, avoidUncertain: state.settings.avoidUncertain })[0] }));
+    const tiers = E.RISK_TIERS.map((t) => ({ t, p: E.findParlays(state.legs, t.target, { sports: sportsFilter(), count: 1, avoidUncertain: state.settings.avoidUncertain, avoidTired: state.settings.avoidTired })[0] }));
     let html = '<div class="bar"></div>';
     html += tiers.map(({ t, p }) => `
       <button class="card tier ${state.selectedTier === t.key ? 'sel' : ''}" data-tier="${t.key}">
@@ -364,8 +449,12 @@
   function teamBlock(t, where) {
     const stars = t.leaders.map((l) => {
       const inj = t.injuries.find((i) => R.samePlayer(i.name, l.name));
-      return `<li>${esc(l.name)} <span class="note">${esc(l.value)} ${esc(l.stat)}</span>${inj ? ` <b class="${statusClass(inj.status)}">${esc(inj.status)}</b>` : ' <span class="good">Active</span>'}</li>`;
+      const min = t.load && t.load.minutes[l.name];
+      return `<li>${esc(l.name)} <span class="note">${esc(l.value)} ${esc(l.stat)}${min != null ? ` · ${min} min last game` : ''}</span>${inj ? ` <b class="${statusClass(inj.status)}">${esc(inj.status)}</b>` : ' <span class="good">Active</span>'}</li>`;
     }).join('');
+    const fat = t.fatigue ? `<div class="lbl">Fatigue</div><div class="${t.fatigue.tired ? 'warn' : 'good'}" style="font-size:14px">${t.fatigue.tired ? '⚠ ' : ''}${esc(t.fatigue.label)}</div>` : '';
+    const load = t.load ? `${t.load.heavy.length ? `<div style="font-size:14px" class="warn">Heavy minutes last game: ${t.load.heavy.map((h) => esc(h.name) + ' ' + h.min).join(', ')}</div>` : ''}
+      ${t.load.starters.length ? `<div class="lbl">Started last game</div><div style="font-size:14px">${t.load.starters.map(esc).join(', ')}</div>` : ''}` : '';
     const inj = t.injuries.length
       ? t.injuries.map((i) => `<li>${esc(i.name)}${i.pos ? ' <span class="note">' + esc(i.pos) + '</span>' : ''} <b class="${statusClass(i.status)}">${esc(i.status)}</b>${i.detail ? ' <span class="note">' + esc(i.detail) + '</span>' : ''}</li>`).join('')
       : '<li class="note">No injuries reported</li>';
@@ -373,6 +462,7 @@
       <div class="tn">${esc(t.name)} <span class="note">${where}</span></div>
       <div class="note">${esc(t.record || '—')}${t.homeRecord ? ` · home ${esc(t.homeRecord)}` : ''}${t.awayRecord ? ` · away ${esc(t.awayRecord)}` : ''}</div>
       ${t.form.length ? `<div class="form">${t.form.map((f) => `<i class="${f.result === 'W' ? 'w' : f.result === 'L' ? 'l' : 'd'}" title="${esc(`${f.result} ${f.score} ${f.atVs} ${f.opp}`)}">${esc(f.result || '–')}</i>`).join('')}</div>` : ''}
+      ${fat}${load}
       ${stars ? `<div class="lbl">Key players</div><ul>${stars}</ul>` : ''}
       <div class="lbl">Injury report</div><ul>${inj}</ul>
     </div>`;
@@ -388,12 +478,14 @@
     box.innerHTML = evs.map((e) => {
       const r = state.research[e.id];
       const alerts = R.starAlerts(r.home).length + R.starAlerts(r.away).length;
+      const tired = [r.away, r.home].filter((t) => t.fatigue && t.fatigue.tired).map((t) => t.abbr);
       const pred = r.predictor ? `ESPN model: ${esc(r.home.abbr)} ${pct(r.predictor.home)} / ${esc(r.away.abbr)} ${pct(r.predictor.away)}` : '';
       const h2h = [r.h2h && r.h2h.summary ? esc(r.h2h.summary) : '', ...(r.h2h ? r.h2h.games : []).map((g) => esc(g.line)), ...r.older.map((g) => esc(g.line))].filter(Boolean);
       return `<details class="card game">
         <summary><b>${esc(e.away_team)} @ ${esc(e.home_team)}</b>
           <span class="note">${esc(e.sport_title || '')} · ${when(e.commence_time)}${pred ? ' · ' + pred : ''}</span>
-          ${alerts ? `<span class="pill demo">⚠ ${alerts} star${alerts > 1 ? 's' : ''} questionable/out</span>` : ''}</summary>
+          ${alerts ? `<span class="pill demo">⚠ ${alerts} star${alerts > 1 ? 's' : ''} questionable/out</span>` : ''}
+          ${tired.length ? `<span class="pill demo">😮‍💨 ${esc(tired.join(', '))} tired</span>` : ''}</summary>
         <div class="teams">${teamBlock(r.away, 'away')}${teamBlock(r.home, 'home')}</div>
         <div class="note"><b>Head-to-head:</b> ${h2h.length ? h2h.join(' · ') : 'No meetings listed'}</div>
       </details>`;
@@ -402,7 +494,7 @@
 
   function renderFilters() {
     const present = [...new Set(state.legs.map((l) => l.sport))];
-    const name = (k) => (SPORTS.find((s) => s[0] === k) || [k, state.legs.find((l) => l.sport === k)?.sportTitle || k])[1];
+    const name = sportName;
     if (present.length < 2) { $('sportFilters').innerHTML = ''; return; }
     $('sportFilters').innerHTML = 'Only use: ' + present.map((k) =>
       `<button class="chip ${state.filter.has(k) ? 'on' : ''}" data-sport="${k}">${esc(name(k))}</button>`).join('') +
@@ -434,6 +526,7 @@
 
   function renderAll() {
     renderStatus();
+    renderSportBar();
     renderFilters();
     renderGoal();
     renderSpectrum();
@@ -446,8 +539,6 @@
     if (e) e.preventDefault();
     const s = state.settings;
     $('apiKey').value = s.apiKey;
-    $('sportChecks').innerHTML = SPORTS.map(([k, n]) =>
-      `<label><input type="checkbox" value="${k}" ${s.sports.includes(k) ? 'checked' : ''}> ${n}</label>`).join('');
     $('regions').value = s.regions;
     $('props').checked = s.props;
     $('propGames').value = s.propGames;
@@ -456,6 +547,8 @@
     $('researchOn').checked = s.research;
     $('avoidUncertain').checked = s.avoidUncertain;
     $('researchMin').value = s.researchMin;
+    $('fatigueOn').checked = s.fatigue;
+    $('avoidTired').checked = s.avoidTired;
     estimate();
     $('settings').showModal();
   }
@@ -463,7 +556,7 @@
   function readForm() {
     return {
       apiKey: $('apiKey').value.trim(),
-      sports: [...$('sportChecks').querySelectorAll('input:checked')].map((i) => i.value),
+      sports: state.settings.sports,
       regions: $('regions').value,
       props: $('props').checked,
       propGames: Math.min(15, Math.max(1, Number($('propGames').value) || 3)),
@@ -472,6 +565,8 @@
       research: $('researchOn').checked,
       avoidUncertain: $('avoidUncertain').checked,
       researchMin: Math.min(720, Math.max(10, Number($('researchMin').value) || 60)),
+      fatigue: $('fatigueOn').checked,
+      avoidTired: $('avoidTired').checked,
     };
   }
 
@@ -486,10 +581,66 @@
     $('creditEst').textContent = `≈ ${per} credits per scan · ≈ ${perDay.toLocaleString()} per day at this refresh rate ` +
       `(free plan = 500/month — raise the refresh time or upgrade if that's too many).` +
       (window.claude ? ` On this claude.ai page each scan also uses about ${calls} Firecrawl credits` +
-        (f.research ? `, plus about 1 per game (and 2 per sport) when research refreshes every ${f.researchMin} min.` : '.') : '');
+        (f.research ? `, plus about 1 per game (and 2 per sport) when research refreshes every ${f.researchMin} min` +
+          (f.fatigue ? ', plus about 2 per game once a day for player minutes.' : '.') : '.') : '');
+  }
+
+  /* ---------- sports picker ---------- */
+  function renderSportBar() {
+    const sel = state.settings.sports;
+    const shown = sel.slice(0, 8).map((k) => `<span class="chip on">${esc(sportName(k))}</span>`).join('');
+    $('sportBar').innerHTML = `<span>Scanning ${sel.length} sport${sel.length === 1 ? '' : 's'}:</span> ${shown}` +
+      (sel.length > 8 ? ` <span class="note">+${sel.length - 8} more</span>` : '') +
+      ` <button class="chip pick" id="openSports" type="button">Choose sports</button>`;
+  }
+
+  function openSports() {
+    const sel = new Set(state.settings.sports);
+    const groups = {};
+    for (const c of state.catalog) (groups[c.group] = groups[c.group] || []).push(c);
+    const order = ['American Football', 'Basketball', 'Baseball', 'Ice Hockey', 'Soccer'];
+    const names = Object.keys(groups).sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99) || a.localeCompare(b));
+    $('sportList').innerHTML = names.map((g) => `
+      <fieldset class="sg"><legend>${esc(g)} <button type="button" class="link" data-all="${esc(g)}">all</button> <button type="button" class="link" data-none="${esc(g)}">none</button></legend>
+        <div class="checks">${groups[g].sort((a, b) => a.title.localeCompare(b.title)).map((c) => {
+          const off = c.has_outrights || !c.active;
+          const why = c.has_outrights ? ' <span class="note">(futures only)</span>' : !c.active ? ' <span class="note">(off-season)</span>' : '';
+          return `<label title="${esc(c.key)}"><input type="checkbox" value="${esc(c.key)}" data-group="${esc(g)}" ${sel.has(c.key) && !off ? 'checked' : ''} ${off ? 'disabled' : ''}> ${esc(c.title)}${why}</label>`;
+        }).join('')}</div></fieldset>`).join('');
+    $('sportsNote').textContent = live()
+      ? 'This list comes live from the odds feed: every sport with betting lines right now.'
+      : 'Demo mode only has sample games for NBA, NFL, NHL and EPL. Add your API key in Settings to load the full live list of every sport.';
+    sportCount();
+    $('sportsDlg').showModal();
+  }
+
+  function sportCount() {
+    const n = $('sportList').querySelectorAll('input:checked').length;
+    const regions = state.settings.regions.split(',').length;
+    $('sportCount').textContent = `${n} selected · ≈ ${n * 3 * regions} odds credits per scan`;
   }
 
   /* ---------- events ---------- */
+  document.addEventListener('click', (e) => { if (e.target.id === 'openSports' || e.target.id === 'openSports2') openSports(); });
+  $('sportList').addEventListener('click', (e) => {
+    const g = e.target.dataset.all ?? e.target.dataset.none;
+    if (g == null) return;
+    $('sportList').querySelectorAll(`input[data-group="${CSS.escape(g)}"]:not(:disabled)`).forEach((i) => { i.checked = e.target.dataset.all != null; });
+    sportCount();
+  });
+  $('sportList').addEventListener('change', sportCount);
+  $('sportsAll').addEventListener('click', () => { $('sportList').querySelectorAll('input:not(:disabled)').forEach((i) => { i.checked = true; }); sportCount(); });
+  $('sportsNone').addEventListener('click', () => { $('sportList').querySelectorAll('input').forEach((i) => { i.checked = false; }); sportCount(); });
+  $('sportsDlg').addEventListener('close', () => {
+    if ($('sportsDlg').returnValue !== 'save') return;
+    const picked = [...$('sportList').querySelectorAll('input:checked')].map((i) => i.value);
+    if (!picked.length) return;
+    state.settings.sports = picked;
+    state.filter.clear();
+    save();
+    renderSportBar();
+    scan();
+  });
   $('askForm').addEventListener('submit', (e) => { e.preventDefault(); renderGoal(); renderSpectrum(); });
   $('examples').addEventListener('click', (e) => {
     if (!e.target.matches('.chip')) return;

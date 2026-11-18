@@ -175,7 +175,22 @@
           id: name, name, abbr: name.slice(0, 3).toUpperCase(), record: `${w}-${l}`,
           homeRecord: `${Math.ceil(w / 2)}-${Math.floor(l / 2)}`, awayRecord: `${Math.floor(w / 2)}-${Math.ceil(l / 2)}`,
           leaders, injuries,
-          form: [0, 1, 2, 3, 4].map(() => ({ result: r() < 0.5 ? 'W' : 'L', score: '', opp: '', atVs: '' })),
+          form: (() => {
+            // Last game 1-3 days before this one; earlier games every ~2 days.
+            const nfl = ev.sport_key.includes('football');
+            const gap = () => (nfl ? 7 - (r() < 0.15 ? 3 : 0) : 1 + Math.floor(r() * 3)) * 86400000;
+            let t = new Date(ev.commence_time).getTime() - (nfl ? gap() : (r() < 0.2 ? 1 : 2 + Math.floor(r() * 2)) * 86400000);
+            const games = [];
+            for (let i = 0; i < 5; i++) {
+              games.unshift({ result: r() < 0.5 ? 'W' : 'L', score: '', opp: '', atVs: r() < 0.5 ? '@' : 'vs', date: new Date(t).toISOString(), id: '' });
+              t -= gap();
+            }
+            return games;
+          })(),
+          load: mine.length ? (() => {
+            const minutes = Object.fromEntries(mine.map((n) => [n, 26 + Math.floor(r() * 16)]));
+            return { starters: mine.slice(), minutes, heavy: mine.filter((n) => minutes[n] >= 38).map((n) => ({ name: n, min: minutes[n] })) };
+          })() : null,
         };
       };
       const half = Math.ceil(players.length / 2);

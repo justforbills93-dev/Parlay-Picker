@@ -105,6 +105,11 @@
 
   .note { font-size: 13.5px; color: var(--muted); }
   .rn { margin-top: 2px; }
+  .chip.pick { background: transparent; border: 1px dashed var(--brand); color: var(--brand); font-weight: 600; }
+  .sportlist { max-height: 55vh; overflow: auto; display: grid; gap: 10px; padding-right: 4px; }
+  fieldset.sg { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px 10px; margin: 0; min-width: 0; }
+  fieldset.sg legend { font-weight: 700; font-size: 14px; padding: 0 4px; }
+  button.link { border: 0; background: none; padding: 0 2px; color: var(--brand); font-size: 12.5px; text-decoration: underline; }
   .research { display: grid; gap: 10px; }
   details.game summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; list-style: none; }
   details.game summary::-webkit-details-marker { display: none; }
@@ -171,6 +176,7 @@
       <button class="chip">Safest bet for $25</button>
       <button class="chip">Bet $10 to win $1000</button>
     </div>
+    <div class="filters" id="sportBar"></div>
     <div class="filters" id="sportFilters"></div>
     <div class="answer" id="answer"></div>
   </section>
@@ -207,7 +213,11 @@
         last 5 results, home/away records, this season's head-to-head, and ESPN's own stats-based matchup model. ESPN's model gets
         a 20% say in moneyline chances. Player props on anyone listed out or questionable are skipped, and you can skip
         games where a star is questionable. Starting lineups and coach-vs-coach records aren't in the free data feeds,
-        so key-player injury status is the lineup check.</p>
+        so key-player injury status and last game's starters are the lineup check.</p>
+      <p><b>Fatigue check.</b> For each team: days of rest, 2nd night of a back-to-back, short weeks in football, 4 games in 6 days,
+        and long road trips. For basketball, hockey and soccer we also read last game's box score: who started and who played
+        heavy minutes (38+ in basketball, 24+ on ice). Tired teams and heavy-minute players get a warning, and you can
+        skip them in Settings.</p>
       <p><b>3. Shop the line.</b> For every pick we show the book paying the most. Getting +110 instead of -105 adds up fast in a parlay.</p>
       <p><b>4. Build your parlay.</b> We search thousands of combinations (one pick per game, so picks don't depend on each other)
         to hit your payout goal with the highest chance of winning.</p>
@@ -228,7 +238,7 @@
       <a href="https://the-odds-api.com/" target="_blank" rel="noopener">the-odds-api.com</a>.</p>
 
     <label>Sports to scan</label>
-    <div class="checks" id="sportChecks"></div>
+    <button type="button" class="chip pick" id="openSports2">Choose sports</button>
 
     <label for="regions">Sportsbooks</label>
     <select id="regions">
@@ -246,6 +256,8 @@
 
     <label><input type="checkbox" id="researchOn"> Game research: injuries, key players, form, head-to-head, ESPN model</label>
     <label><input type="checkbox" id="avoidUncertain"> Skip games where a star player is questionable or out</label>
+    <label><input type="checkbox" id="fatigueOn"> Fatigue: rest days, back-to-backs, road trips, player minutes</label>
+    <label><input type="checkbox" id="avoidTired"> Skip tired teams and players in parlays</label>
     <label for="researchMin">Refresh research every (minutes)</label>
     <input type="number" id="researchMin" min="10" max="720" value="60">
 
@@ -256,6 +268,22 @@
     <div class="row-end">
       <button value="cancel" formnovalidate>Cancel</button>
       <button class="primary" value="save" id="saveSet">Save &amp; scan</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="sportsDlg">
+  <form method="dialog">
+    <h3 style="margin:0">Choose sports</h3>
+    <p class="note" id="sportsNote" style="margin:4px 0 8px"></p>
+    <div class="row-end" style="justify-content:flex-start;margin:0 0 8px">
+      <button type="button" id="sportsAll">Select all</button><button type="button" id="sportsNone">Clear</button>
+    </div>
+    <div id="sportList" class="sportlist"></div>
+    <div class="row-end" style="align-items:center">
+      <span class="note" id="sportCount" style="margin-right:auto"></span>
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button class="primary" value="save">Save &amp; scan</button>
     </div>
   </form>
 </dialog>

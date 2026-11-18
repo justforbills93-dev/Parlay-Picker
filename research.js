@@ -22,9 +22,23 @@
     americanfootball_ncaaf: { path: 'football/college-football', q: '&groups=80&limit=300' },
     icehockey_nhl: { path: 'hockey/nhl' },
     baseball_mlb: { path: 'baseball/mlb' },
+    basketball_wncaab: { path: 'basketball/womens-college-basketball', q: '&groups=50&limit=400' },
     soccer_epl: { path: 'soccer/eng.1' },
+    soccer_efl_champ: { path: 'soccer/eng.2' },
+    soccer_spain_la_liga: { path: 'soccer/esp.1' },
+    soccer_germany_bundesliga: { path: 'soccer/ger.1' },
+    soccer_italy_serie_a: { path: 'soccer/ita.1' },
+    soccer_france_ligue_one: { path: 'soccer/fra.1' },
+    soccer_netherlands_eredivisie: { path: 'soccer/ned.1' },
+    soccer_portugal_primeira_liga: { path: 'soccer/por.1' },
+    soccer_mexico_ligamx: { path: 'soccer/mex.1' },
+    soccer_uefa_champs_league: { path: 'soccer/uefa.champions' },
+    soccer_uefa_europa_league: { path: 'soccer/uefa.europa' },
     soccer_usa_mls: { path: 'soccer/usa.1' },
   };
+
+  // Heavy workload thresholds for minutes in the last game.
+  const HEAVY = { basketball: 38, hockey: 24, soccer: 90 };
 
   // Statuses that mean a player might not play.
   const UNCERTAIN = /(out|doubt|question|day-to-day|game-time|suspen|injured reserve|^ir$|il\b)/i;
@@ -125,6 +139,7 @@
     }));
     const form = (id) => (byId(json.lastFiveGames, id)?.events || []).slice(0, 5).map((e) => ({
       result: e.gameResult || '', score: e.score || '', opp: e.opponent?.abbreviation || '', atVs: e.atVs || '',
+      date: e.gameDate || '', id: e.id ? String(e.id) : '',
     }));
 
     const ss = (json.seasonseries || [])[0];
@@ -158,6 +173,58 @@
       away: { ...game.away, injuries: injuries(game.away.id), form: form(game.away.id) },
       h2h, older, predictor,
       updated: Date.now(),
+    };
+  }
+
+  /* ---------- fatigue ---------- */
+
+  // Team fatigue from the schedule: rest before this game, back-to-backs,
+  // games in the last 7 days and road-trip length. `form` is oldest → newest.
+  function teamFatigue(side, commence, sportKey, isAway) {
+    const start = new Date(commence).getTime();
+    const past = side.form.filter((f) => f.date && new Date(f.date).getTime() < start - 3600000);
+    if (!past.length) return null;
+    const lastT = Math.max(...past.map((f) => new Date(f.date).getTime()));
+    const restH = (start - lastT) / 3600000;
+    const last6 = past.filter((f) => start - new Date(f.date).getTime() < 6 * 86400000).length;
+    let road = isAway ? 1 : 0;
+    if (isAway) for (let i = past.length - 1; i >= 0 && past[i].atVs === '@'; i--) road++;
+    const football = /football/.test(sportKey);
+    const daysOff = Math.max(0, Math.round(restH / 24) - 1);
+    const b2b = !football && restH < 30;
+    const shortWeek = football && restH < 6 * 24;
+    const crowded = !football && last6 >= 3; // this game makes 4 in 6 days
+    const tired = b2b || shortWeek || crowded;
+    const bits = [];
+    if (b2b) bits.push('2nd night of a back-to-back');
+    else if (shortWeek) bits.push(`short week (${Math.round(restH / 24)} days)`);
+    else bits.push(`${daysOff} day${daysOff === 1 ? '' : 's'} rest`);
+    if (crowded) bits.push(`${last6 + 1} games in 6 days`);
+    if (road >= 3) bits.push(`game ${road} of a road trip`);
+    return { restH, daysOff, b2b, shortWeek, last6, road, tired, label: bits.join(' · ') };
+  }
+
+  // A team's minutes and starters from its last game's box score.
+  function parseLoad(json, teamId, sportKey) {
+    const team = (json.boxscore?.players || []).find((t) => String(t.team?.id) === String(teamId));
+    if (!team) return null;
+    const st = team.statistics?.[0] || {};
+    const labels = (st.labels || []).map((x) => String(x).toUpperCase());
+    const mi = labels.indexOf('MIN') >= 0 ? labels.indexOf('MIN') : labels.indexOf('TOI');
+    const heavyAt = HEAVY[Object.keys(HEAVY).find((k) => sportKey.includes(k))] || Infinity;
+    const players = (st.athletes || []).filter((a) => !a.didNotPlay).map((a) => {
+      let min = null;
+      if (mi >= 0 && a.stats && a.stats[mi] != null) {
+        const v = String(a.stats[mi]);
+        min = v.includes(':') ? parseInt(v, 10) + parseInt(v.split(':')[1], 10) / 60 : parseFloat(v);
+        if (!isFinite(min)) min = null;
+      }
+      return { name: a.athlete?.displayName || '', starter: !!a.starter, min };
+    });
+    return {
+      starters: players.filter((p) => p.starter).map((p) => p.name),
+      minutes: Object.fromEntries(players.filter((p) => p.min != null).map((p) => [p.name, Math.round(p.min)])),
+      heavy: players.filter((p) => p.min != null && p.min >= heavyAt).map((p) => ({ name: p.name, min: Math.round(p.min) })),
     };
   }
 
@@ -206,6 +273,13 @@
           out.blocked = true;
           out.warnings.push(`${inj.name} is ${inj.status}${inj.detail ? ' (' + inj.detail + ')' : ''}`);
         }
+        for (const side of [r.home, r.away]) {
+          const heavy = side.load?.heavy.find((h) => samePlayer(h.name, player));
+          if (heavy) {
+            out.warnings.push(`${heavy.name} played ${heavy.min} min last game` + (side.fatigue?.b2b ? ' and plays again tonight' : ''));
+            if (side.fatigue?.tired) out.fatigued = true;
+          }
+        }
         return out;
       }
 
@@ -217,6 +291,11 @@
         out.warnings.push(`${a.name} (${a.stat}) is ${a.status}`);
         if (RULED_OUT.test(a.status)) out.starOut = true; else out.starQuestionable = true;
       }
+
+      const fat = sideHome ? r.home.fatigue : sideAway ? r.away.fatigue : null;
+      if (fat && fat.tired) { out.fatigued = true; out.warnings.push(`Tired: ${fat.label}`); }
+      const opp = sideHome ? r.away.fatigue : sideAway ? r.home.fatigue : null;
+      if (fat && opp && !fat.tired && opp.tired) out.notes = (out.notes || []).concat(`Rest edge: opponent on ${opp.label}`);
 
       if (l.market === 'h2h' && r.predictor && (sideHome || sideAway)) {
         const model = sideHome ? r.predictor.home : r.predictor.away;
@@ -232,6 +311,6 @@
   return {
     LEAGUES, UNCERTAIN, norm, sameTeam, samePlayer, etDate,
     scoreboardUrls, summaryUrl, parseScoreboard, matchGame, parseSummary,
-    starAlerts, applyResearch,
+    starAlerts, applyResearch, teamFatigue, parseLoad,
   };
 });

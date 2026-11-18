@@ -22,6 +22,12 @@ travels inside that request URL to Firecrawl. Opened as a normal file or website
 BetRivers, Fanatics, ESPN BET, Bovada, BetOnline, Pinnacle and more, depending on the region you pick.
 Settings shows roughly how many credits each scan uses. Raise the re-scan time to stay inside the free plan.
 
+## Sports
+Tap **Choose sports** under the goal box. With an API key the list is loaded live from the odds feed, so it covers
+every sport and league that has betting lines right now (NFL, NBA, NHL, MLB, college, dozens of soccer leagues,
+tennis, MMA, boxing, cricket, rugby, AFL and more). Futures-only markets (golf winners, elections) are listed but
+can't go in daily parlays. Game research covers the US leagues and the major soccer leagues ESPN tracks.
+
 ## What it does
 - **Goal box**: understands "turn $10 into $100", "bet $20 to win $500", "safest bet for $25".
 - **Risk spectrum**: the best parlay at 5 levels, from Safest (~1.8x) to Moonshot (~60x).
@@ -36,10 +42,14 @@ On every scan (refreshed every 60 minutes by default) the app reads ESPN's publi
 - this season's head-to-head (soccer also lists older meetings)
 - ESPN's stats-based matchup predictor
 
+- fatigue: days of rest, 2nd night of a back-to-back, short weeks in football, 4 games in 6 days, road-trip length
+- player load (basketball, hockey, soccer): who started last game and who played heavy minutes (38+ basketball, 24+ hockey, 90 soccer)
+
 How it changes the picks:
 - Moneyline chances blend the market (80%) with ESPN's model (20%).
 - Player props on anyone listed Out, Doubtful, Questionable or Day-To-Day are left out of parlays.
 - "Skip games where a star player is questionable or out" (on by default) keeps those games out of parlays.
+- Tired teams and heavy-minute players get a warning. "Skip tired teams and players" (off by default) removes them.
 
 Not covered: confirmed starting lineups and coach-vs-coach records aren't in the free feeds, so key-player
 injury status is the lineup check. Older head-to-head (previous seasons) isn't pulled for US leagues because
