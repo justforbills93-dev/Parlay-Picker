@@ -179,8 +179,24 @@
   const LIVE_SITE = 'https://justforbills93-dev.github.io/Parlay-Picker/';
   const IN_CLAUDE = !!(window.claude && typeof window.claude.use === 'function');
 
+  // ESPN's free feed is retried (and tried on its second host) before we call it a failure.
+  async function fetchRetry(url) {
+    if (!/^https:\/\/site\.api\.espn\.com\//.test(url)) return fetch(url);
+    const alt = url.replace('site.api.espn.com', 'site.web.api.espn.com');
+    let last;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const res = await fetch(i === 1 ? alt : url, { cache: 'no-store' });
+        if (res.ok || (res.status < 500 && res.status !== 429)) return res;
+        last = new Error(res.status + ' ' + res.statusText);
+      } catch (e) { last = e; }
+      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+    throw last;
+  }
+
   async function getJSON(url) {
-    const res = await fetch(url);
+    const res = await fetchRetry(url);
     const rem = res.headers.get('x-requests-remaining');
     if (rem != null) state.remaining = Number(rem);
     if (!res.ok) {
@@ -348,17 +364,26 @@
       const g = keyNeededGroups();
       throw new Error(`${g.length ? g.join(', ') : 'your chosen sports'} need${g.length === 1 ? 's' : ''} a free Odds API key: ESPN shows these matches but posts no odds for them. Add the key in Settings.`);
     }
-    let firstErr = null, ok = 0;
+    const failed = [];
     const lists = await pool(keys, 4, async (k) => {
+      let ok = 0, err = null;
       const boards = await Promise.all(R.scoreboardUrls(k, win.from, win.to).map((u) =>
-        memoJSON(u, 60000).then((b) => { ok++; return b; }).catch((e) => { firstErr = firstErr || e; return null; })));
+        memoJSON(u, 60000).then((b) => { ok++; return b; }).catch((e) => { err = err || e; return null; })));
+      if (!ok) {
+        // Couldn't reach ESPN for this sport: keep its earlier games rather than dropping them.
+        failed.push({ k, msg: (err && err.message) || 'request failed' });
+        return state.events.filter((e) => e.sport_key === k);
+      }
       return boards.filter(Boolean).flatMap((b) => R.oddsFromScoreboard(b, k));
     });
-    if (!ok && firstErr) throw firstErr;
+    state.partial = failed.map((f) => sportName(f.k)).join(', ');
     const events = lists.filter(Boolean).flat().filter((e) => {
       const t = new Date(e.commence_time).getTime();
       return t >= win.from.getTime() && t <= win.to.getTime();
     });
+    if (!events.length && failed.length) {
+      throw new Error(`Couldn't reach ESPN for ${state.partial} (${failed[0].msg}). Check your connection or turn off ad/content blockers for this site.`);
+    }
     const seen = new Set();
     return events.filter((e) => !seen.has(e.id) && seen.add(e.id));
   }
@@ -929,7 +954,8 @@
         `Retrying automatically. <a href="#" id="openSet2">Open Settings</a>`;
     } else if (state.mode === 'espn') {
       const need = keyNeededGroups();
-      n.innerHTML = `<b>Live:</b> real games with DraftKings lines, refreshed every minute. ` + (state.keyNote ? esc(state.keyNote) + ' ' : '') +
+      n.innerHTML = `<b>Live:</b> real games with DraftKings lines, refreshed every minute. ` +
+        (state.partial ? `<b class="warn">Couldn't refresh ${esc(state.partial)} this time, so earlier lines are shown for it.</b> ` : '') + (state.keyNote ? esc(state.keyNote) + ' ' : '') +
         (need.length ? `<b>${esc(need.join(', '))}</b> ${need.length === 1 ? 'isn\'t' : 'aren\'t'} included: ESPN posts no odds for ${need.length === 1 ? 'it' : 'them'}. ` : '') +
         `To ${need.length ? 'add ' + esc(need.join(', ')) + ', ' : ''}compare 10+ sportsbooks and add player props, ${keyLink}.`;
     } else if (state.keyNote) {
