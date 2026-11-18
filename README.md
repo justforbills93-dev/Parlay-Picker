@@ -44,6 +44,15 @@ At the same payout, more legs almost always means a lower chance, because each l
 - **Fill the rest to reach my goal** keeps your picks and adds the best legs from other games. The **legs menu**
   next to Find picks sets the total size (or "Best # of legs").
 
+## Place this bet
+Every parlay (and My parlay) has **Place this bet** buttons for DraftKings, FanDuel and BetMGM. The panel shows each
+leg's price at that book, the parlay's total there, and a link per leg:
+- **Add to slip** opens the book with that pick already in your betslip (DraftKings links come with the free ESPN
+  feed; with an Odds API key, links for other books are included when the feed has them).
+- **Find it** opens that league's page at the book when there's no direct link.
+Then choose Parlay in the betslip and enter your stake. **Copy picks** copies the list. The bet is placed in the
+sportsbook's own app with your account; this app never handles money.
+
 ## Sports
 Tap **Choose sports** under the goal box. With an API key the list is loaded live from the odds feed, so it covers
 every sport and league that has betting lines right now (NFL, NBA, NHL, MLB, college, dozens of soccer leagues,

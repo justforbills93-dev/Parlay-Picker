@@ -70,6 +70,35 @@
   const inSlip = (id) => state.slip.includes(id);
   const addBtn = (l) => `<button type="button" class="add ${inSlip(l.id) ? 'on' : ''}" data-add="${esc(l.id)}" aria-label="${inSlip(l.id) ? 'Remove from' : 'Add to'} my parlay">${inSlip(l.id) ? '✓' : '+'}</button>`;
   const MAX_LEGS = 15;
+
+  // Where to send people to place a bet. A pick's own betslip link (from the
+  // odds feed) is used when we have one; otherwise the league page.
+  const BOOKS = {
+    draftkings: {
+      name: 'DraftKings', home: 'https://sportsbook.draftkings.com/',
+      league: { basketball_nba: 'leagues/basketball/nba', americanfootball_nfl: 'leagues/football/nfl', icehockey_nhl: 'leagues/hockey/nhl',
+        baseball_mlb: 'leagues/baseball/mlb', americanfootball_ncaaf: 'leagues/football/ncaaf', basketball_ncaab: 'leagues/basketball/ncaab',
+        basketball_wnba: 'leagues/basketball/wnba', soccer_epl: 'leagues/soccer/england---premier-league', mma_mixed_martial_arts: 'leagues/mma/ufc' },
+    },
+    fanduel: {
+      name: 'FanDuel', home: 'https://sportsbook.fanduel.com/',
+      league: { basketball_nba: 'navigation/nba', americanfootball_nfl: 'navigation/nfl', icehockey_nhl: 'navigation/nhl',
+        baseball_mlb: 'navigation/mlb', americanfootball_ncaaf: 'navigation/ncaaf', basketball_ncaab: 'navigation/ncaab',
+        mma_mixed_martial_arts: 'navigation/ufc' },
+    },
+    betmgm: {
+      name: 'BetMGM', home: 'https://sports.betmgm.com/en/sports',
+      league: { basketball_nba: 'en/sports/basketball-7/betting/usa-9/nba-6004', americanfootball_nfl: 'en/sports/football-11/betting/usa-9/nfl-35',
+        icehockey_nhl: 'en/sports/ice-hockey-12/betting/usa-9/nhl-34', baseball_mlb: 'en/sports/baseball-23/betting/usa-9/mlb-75' },
+      base: 'https://sports.betmgm.com/',
+    },
+  };
+  const bookUrl = (bk, sport) => {
+    const b = BOOKS[bk];
+    const path = b.league[sport];
+    return path ? (b.base || b.home) + path : b.home;
+  };
+  const quoteAt = (l, bk) => l.quotes.find((q) => q.book === bk || (bk === 'betmgm' && /mgm/.test(q.book)));
   const TYPE_NAMES = { ml: 'Moneylines', spread: 'Spreads', total: 'Totals', prop: 'Player props' };
 
   function loadCatalog() {
@@ -204,7 +233,7 @@
     // Spreads/totals don't exist for every sport (tennis, MMA...), so ask for
     // moneylines alone if the full request is refused.
     const odds = (k, markets) => getJSON(`${API}/sports/${k}/odds?apiKey=${key}&regions=${s.regions}&markets=${markets}` +
-      `&oddsFormat=decimal&commenceTimeFrom=${isoNoMs(now)}&commenceTimeTo=${isoNoMs(to)}`);
+      `&oddsFormat=decimal&includeLinks=true&commenceTimeFrom=${isoNoMs(now)}&commenceTimeTo=${isoNoMs(to)}`);
     const lists = await pool(keys, 6, (k) => odds(k, 'h2h,spreads,totals').catch(() => odds(k, 'h2h')));
     const events = lists.filter(Boolean).flat();
 
@@ -217,7 +246,7 @@
           .slice(0, s.propGames)
           .forEach((ev) => jobs.push(
             getJSON(`${API}/sports/${k}/events/${ev.id}/odds?apiKey=${key}&regions=${s.regions}` +
-              `&markets=${PROP_MARKETS[k]}&oddsFormat=decimal`)
+              `&markets=${PROP_MARKETS[k]}&oddsFormat=decimal&includeLinks=true`)
               .then((p) => mergeProps(ev, p)).catch((e) => console.warn('props', ev.id, e))));
       }
       await Promise.all(jobs);
@@ -428,7 +457,53 @@
         <div class="odds-line">${p.legs.length}-leg parlay · ${odds(p.mult)} · ${valueWord(p.ev)}
           <span title="Average result per bet if you made it many times">(${p.ev >= 0 ? '+' : ''}${(p.ev * 100).toFixed(1)}% long-run)</span></div>
         <ul class="legs">${legs}</ul>
+        ${placeRow(p.legs)}
       </div>`;
+  }
+
+  function placeRow(legs) {
+    const ids = esc(JSON.stringify(legs.map((l) => l.id)));
+    return `<div class="place"><span class="note">Place this bet:</span>
+      ${Object.entries(BOOKS).map(([k, b]) => `<button type="button" class="bookbtn" data-place="${ids}" data-book="${k}">${b.name}</button>`).join('')}</div>`;
+  }
+
+  function openPlace(ids, book) {
+    state.place = { ids, book };
+    renderPlace();
+    $('placeDlg').showModal();
+  }
+
+  function renderPlace() {
+    const { ids, book } = state.place;
+    const legs = ids.map((id) => state.legById.get(id)).filter(Boolean);
+    const b = BOOKS[book];
+    const stake = E.parseGoal($('ask').value).stake || 10;
+    const rows = legs.map((l) => ({ l, q: quoteAt(l, book) }));
+    const priced = rows.every((r) => r.q);
+    const mult = priced ? rows.reduce((a, r) => a * r.q.price, 1) : null;
+    const best = legs.reduce((a, l) => a * l.price, 1);
+    const direct = rows.filter((r) => r.q && r.q.link).length;
+    $('placeBody').innerHTML = `
+      <div class="filters" style="margin:0 0 10px">${Object.entries(BOOKS).map(([k, x]) =>
+        `<button type="button" class="chip ${k === book ? 'on' : ''}" data-pbook="${k}">${x.name}</button>`).join('')}</div>
+      <p style="margin:0 0 8px">${legs.length}-leg parlay at <b>${b.name}</b>:
+        ${mult ? `<b>${odds(mult)}</b> · ${money(stake)} pays <b>${money(stake * mult)}</b>` : `<span class="note">we don't have ${b.name}'s price for every leg, so check the total in their app.</span>`}
+        ${mult && best > mult * 1.005 ? `<br><span class="note">Best prices across all books pay ${money(stake * best)}. The difference is what line shopping is worth.</span>` : ''}</p>
+      <ol class="placelist">${rows.map(({ l, q }) => `<li>
+        <div><b>${esc(l.pick)}</b><div class="note">${esc(l.game)} · ${when(l.commence)}</div></div>
+        <div class="o">${q ? odds(q.price) : '<span class="note">no price in feed</span>'}
+          <a class="bookbtn" href="${esc(q && q.link ? q.link : bookUrl(book, l.sport))}" target="_blank" rel="noopener">${q && q.link ? 'Add to slip' : 'Find it'}</a></div>
+      </li>`).join('')}</ol>
+      <p class="note">${direct ? `"Add to slip" opens ${b.name} with that pick already in your betslip. ` : ''}${direct < legs.length ? `"Find it" opens the league page, where you tap the pick yourself. ` : ''}
+        Add every leg, then choose <b>Parlay</b> in the betslip and enter your stake. Odds can move before you place it.
+        ${book === 'betmgm' ? ' BetMGM asks which state you\'re in the first time, then opens the right page.' : ''}</p>
+      <div class="row-end" style="justify-content:flex-start;flex-wrap:wrap">
+        <a class="bookbtn big" href="${esc(bookUrl(book, legs[0] ? legs[0].sport : ''))}" target="_blank" rel="noopener">Open ${b.name}</a>
+        <button type="button" id="copyPicks">Copy picks</button>
+        <span class="note" id="copyMsg"></span>
+      </div>
+      <p class="note">You place the bet in ${b.name}'s own app or site, with your own account. 21+ and in a state where it's legal. Help: 1-800-GAMBLER.</p>
+      <textarea id="copyText" readonly hidden>${esc(rows.map(({ l, q }) => `${l.pick} (${odds(q ? q.price : l.price)}) — ${l.game}, ${when(l.commence)}`).join('\n'))}</textarea>`;
   }
 
   function legNotes(l) {
@@ -713,6 +788,7 @@
         }).join('')}</ul>
         ${gone ? `<p class="note">${gone} pick${gone > 1 ? 's are' : ' is'} no longer available.</p>` : ''}
         ${warns.map((w) => `<p class="warn note" style="margin:6px 0">⚠ ${esc(w)}</p>`).join('')}
+        ${ok.length ? placeRow(ok) : ''}
         <div class="row-end" style="justify-content:flex-start;flex-wrap:wrap">
           <button type="button" class="primary" id="fillSlip">Fill the rest to reach my goal</button>
           <button type="button" id="clearSlip">Clear</button>
@@ -910,6 +986,16 @@
       state.slip = inSlip(id) ? state.slip.filter((x) => x !== id) : state.slip.concat(id);
       if (!state.slip.length) state.lockSlip = false;
       saveSlip(); refreshPicks();
+      return;
+    }
+    const pl = e.target.closest('[data-place]');
+    if (pl) { e.preventDefault(); e.stopPropagation(); openPlace(JSON.parse(pl.dataset.place), pl.dataset.book); return; }
+    const pb = e.target.closest('[data-pbook]');
+    if (pb) { state.place.book = pb.dataset.pbook; renderPlace(); return; }
+    if (e.target.closest('#copyPicks')) {
+      const t = $('copyText').value;
+      const done = (ok) => { $('copyMsg').textContent = ok ? 'Copied.' : 'Copy blocked here: press and hold to select the list below.'; if (!ok) { $('copyText').hidden = false; $('copyText').select(); } };
+      try { navigator.clipboard.writeText(t).then(() => done(true), () => done(false)); } catch { done(false); }
       return;
     }
     if (e.target.closest('#slipToggle')) { state.slipOpen = !state.slipOpen; renderSlip(); return; }

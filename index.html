@@ -106,6 +106,14 @@
   .note { font-size: 13.5px; color: var(--muted); }
   .rn { margin-top: 2px; }
   .chip.dim { opacity: .45; }
+  .place { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding-top: 4px; }
+  .bookbtn { font-size: 13px; font-weight: 700; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--chip); color: var(--ink); text-decoration: none; display: inline-block; cursor: pointer; }
+  .bookbtn.big { font-size: 15px; padding: 9px 14px; background: var(--brand); color: var(--brand-ink); border-color: transparent; }
+  .placelist { padding-left: 20px; margin: 8px 0; }
+  .placelist li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .placelist .o { text-align: right; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; font-weight: 700; white-space: nowrap; }
+  #copyText { width: 100%; min-height: 90px; font: inherit; font-size: 13px; }
   .ask { flex-wrap: wrap; }
   .ask select { font: inherit; padding: 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); color: var(--ink); }
   @media (max-width: 640px) { .ask input { flex-basis: 100%; } .ask select, .ask button { flex: 1; } }
@@ -315,6 +323,14 @@
 </dialog>
 
 <div id="slip" class="slip" hidden></div>
+
+<dialog id="placeDlg">
+  <form method="dialog">
+    <div style="display:flex;align-items:center;gap:8px"><h3 style="margin:0">Place this bet</h3>
+      <button value="close" style="margin-left:auto" aria-label="Close">✕</button></div>
+    <div id="placeBody" style="margin-top:10px"></div>
+  </form>
+</dialog>
 
 <dialog id="sportsDlg">
   <form method="dialog">

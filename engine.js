@@ -114,7 +114,7 @@
                 groups.set(key, { market: mk.key, outcome: o, quotes: [], wSum: 0, pSum: 0 });
               }
               const g = groups.get(key);
-              g.quotes.push({ book: bm.key, bookTitle: bm.title || bm.key, price: o.price });
+              g.quotes.push({ book: bm.key, bookTitle: bm.title || bm.key, price: o.price, link: o.link || mk.link || bm.link || null });
               const w = outs.length >= 2 ? weight : weight * 0.5;
               g.wSum += w;
               g.pSum += w * fair;

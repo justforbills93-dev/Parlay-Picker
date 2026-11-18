@@ -192,6 +192,17 @@
   }
   const cur = (x) => (x && (x.close || x.current || x.open)) || {};
 
+  // ESPN wraps the book's own betslip link in a tracking URL; keep the real one.
+  function betLink(x) {
+    const href = cur(x).link?.href;
+    if (!href) return null;
+    try {
+      const pre = new URL(href).searchParams.get('preurl');
+      if (pre && /^https:\/\//.test(pre)) return pre;
+      return /__/.test(href) ? null : href;
+    } catch { return null; }
+  }
+
   // Turns ESPN scoreboard odds into the same shape The Odds API returns.
   function oddsFromScoreboard(json, sportKey) {
     const title = json.leagues?.[0]?.abbreviation || json.leagues?.[0]?.name || sportKey;
@@ -207,7 +218,7 @@
         const ml = o.moneyline;
         if (ml) {
           const outs = [[H, ml.home], [A, ml.away], ['Draw', ml.draw]]
-            .map(([name, x]) => ({ name, price: amToDec(cur(x).odds) })).filter((x) => x.price);
+            .map(([name, x]) => ({ name, price: amToDec(cur(x).odds), link: betLink(x) })).filter((x) => x.price);
           if (outs.length >= 2) markets.push({ key: 'h2h', outcomes: outs });
         }
         const ps = o.pointSpread;
@@ -215,7 +226,7 @@
           const h = cur(ps.home), a = cur(ps.away);
           const hl = lineNum(h.line), al = lineNum(a.line), ho = amToDec(h.odds), ao = amToDec(a.odds);
           if (hl != null && al != null && ho && ao) {
-            markets.push({ key: 'spreads', outcomes: [{ name: H, price: ho, point: hl }, { name: A, price: ao, point: al }] });
+            markets.push({ key: 'spreads', outcomes: [{ name: H, price: ho, point: hl, link: betLink(ps.home) }, { name: A, price: ao, point: al, link: betLink(ps.away) }] });
           }
         }
         const t = o.total;
@@ -223,7 +234,7 @@
           const ov = cur(t.over), un = cur(t.under);
           const pt = lineNum(ov.line), oo = amToDec(ov.odds), uo = amToDec(un.odds);
           if (pt != null && oo && uo) {
-            markets.push({ key: 'totals', outcomes: [{ name: 'Over', price: oo, point: pt }, { name: 'Under', price: uo, point: pt }] });
+            markets.push({ key: 'totals', outcomes: [{ name: 'Over', price: oo, point: pt, link: betLink(t.over) }, { name: 'Under', price: uo, point: pt, link: betLink(t.under) }] });
           }
         }
         const name = o.provider?.displayName || o.provider?.name || 'Sportsbook';
