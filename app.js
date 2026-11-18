@@ -814,7 +814,7 @@
   }
 
   function refreshPicks() {
-    renderGoal(); renderTopPicks(); renderByo(); renderSlip();
+    renderGoal(); renderTopPicks(); renderByo(); renderSlip(); updateCounts();
     const sel = state.selectedTier; if (sel) renderSpectrum();
   }
 
@@ -839,8 +839,7 @@
     if (state.error) {
       n.innerHTML = `<b>Scan failed.</b> ${esc(state.error)} <a href="#" id="openSet2">Open Settings</a>`;
     } else if (state.mode === 'espn') {
-      n.innerHTML = `<b>Live odds are on</b>: real games and current DraftKings lines (moneyline, spread, total) for leagues ESPN covers. ` +
-        `To compare 10+ sportsbooks, find the best price, add player props and unlock every sport, ${keyLink}.`;
+      n.innerHTML = `<b>Live:</b> real games with DraftKings lines. To compare 10+ sportsbooks, add player props and unlock every sport, ${keyLink}.`;
     } else {
       n.innerHTML = `<b>You're viewing sample odds, not real games.</b> Live odds couldn't load: ${esc(state.demoReason || 'unknown reason')}. ` +
         `Press Scan now to retry, or ${keyLink}.`;
@@ -874,6 +873,7 @@
     renderByo();
     renderSlip();
     renderResearch();
+    updateCounts();
   }
 
   /* ---------- settings ---------- */
@@ -964,6 +964,31 @@
     $('sportCount').textContent = `${n} selected · ≈ ${n * 3 * regions} odds credits per scan`;
   }
 
+  /* ---------- pages ---------- */
+  const PAGES = ['picks', 'risk', 'top', 'build', 'games', 'help'];
+  function showPage(name, push = true) {
+    if (!PAGES.includes(name)) name = 'picks';
+    for (const p of PAGES) $('page-' + p).hidden = p !== name;
+    document.querySelectorAll('[data-page]').forEach((a) => a.classList.toggle('on', a.dataset.page === name));
+    if (push && location.hash !== '#' + name) {
+      try { history.replaceState(null, '', '#' + name); } catch { location.hash = name; }
+    }
+    window.scrollTo(0, 0);
+  }
+  function updateCounts() {
+    const set = (k, n) => { const el = document.querySelector(`[data-count="${k}"]`); if (el) el.textContent = n ? String(n) : ''; };
+    set('build', state.slip.length);
+    set('games', Object.keys(state.research).filter((id) => state.events.some((e) => e.id === id)).length);
+  }
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-page]');
+    if (!a) return;
+    e.preventDefault();
+    showPage(a.dataset.page);
+  });
+  window.addEventListener('hashchange', () => showPage(location.hash.slice(1), false));
+  showPage(location.hash.slice(1) || 'picks', false);
+
   /* ---------- events ---------- */
   document.addEventListener('click', (e) => { if (e.target.id === 'openSports' || e.target.id === 'openSports2') openSports(); });
   $('sportList').addEventListener('click', (e) => {
@@ -1021,7 +1046,7 @@
     }
     if (e.target.closest('#slipToggle')) { state.slipOpen = !state.slipOpen; renderSlip(); return; }
     if (e.target.closest('#clearSlip')) { state.slip = []; state.lockSlip = false; saveSlip(); refreshPicks(); return; }
-    if (e.target.closest('#fillSlip')) { state.lockSlip = true; state.slipOpen = false; refreshPicks(); $('results').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    if (e.target.closest('#fillSlip')) { state.lockSlip = true; state.slipOpen = false; refreshPicks(); showPage('picks'); $('results').scrollIntoView({ block: 'start' }); return; }
     if (e.target.closest('#unlock')) { state.lockSlip = false; refreshPicks(); }
   }, true);
   $('byoSearch').addEventListener('input', (e) => { state.byoQuery = e.target.value; renderByo(); });
