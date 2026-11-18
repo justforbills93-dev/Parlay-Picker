@@ -63,7 +63,7 @@
     remaining: null, error: null, filter: new Set(), selectedTier: null, scanning: false,
     research: {}, researchNote: '', catalog: loadCatalog(), loads: loadBox(),
     mode: '', demoReason: '', memo: new Map(),
-    fcSession: 0, fcToday: loadUsage(), fcDay: today(), relayOn: false,
+    fcSession: 0, fcToday: loadUsage(), fcDay: today(), relayOn: false, relayPausedUntil: 0,
     legCount: 0, openRow: 0, types: new Set(['ml', 'spread', 'total', 'prop']),
     slip: loadSlip(), lockSlip: false, slipOpen: false, legById: new Map(), byoQuery: '',
   };
@@ -194,8 +194,19 @@
     try { localStorage.setItem('pp-usage', JSON.stringify({ day: state.fcDay, n: state.fcToday })); } catch { /* ignore */ }
   }
 
+  // When Firecrawl says the account is out of credits, stop calling it until
+  // the allowance resets instead of failing (and retrying) every request.
+  function creditsMessage() {
+    const t = new Date(state.relayPausedUntil);
+    return `Your Firecrawl credits ran out, so live odds are paused until about ` +
+      `${t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}, when the free daily allowance resets. ` +
+      `Sample games are shown until then. To avoid this, use the free GitHub Pages version (no Firecrawl needed), ` +
+      `turn Auto-scan off, or add credits at firecrawl.dev.`;
+  }
+
   async function getViaRelay(mcp, url) {
     let result;
+    if (state.relayPausedUntil && Date.now() < state.relayPausedUntil) throw new Error(creditsMessage());
     countCall();
     try {
       result = await mcp.callTool('Firecrawl', 'firecrawl_scrape', {
@@ -203,7 +214,16 @@
         objective: 'Fetch current sportsbook odds JSON for a parlay picker page.',
       }, { cache: false });
     } catch (e) {
-      throw new Error(RELAY_HELP[e && e.code] || ('Firecrawl error: ' + ((e && e.message) || 'unknown')));
+      const msg = String((e && e.message) || '');
+      if (/insufficient credits|out of credits|credits ran out/i.test(msg)) {
+        const reset = msg.match(/resets at (\d{4}-\d\d-\d\dT[\d:.]+Z)/);
+        const at = reset ? Date.parse(reset[1]) : NaN;
+        state.relayPausedUntil = isFinite(at) && at > Date.now() ? at : Date.now() + 60 * 60000;
+        throw new Error(creditsMessage());
+      }
+      // Keep only the first sentence of other tool errors; the rest is meant for AI agents, not people.
+      const first = msg.split(/(?<=[.!?])\s/)[0].slice(0, 200);
+      throw new Error(RELAY_HELP[e && e.code] || ('Firecrawl error: ' + (first || 'unknown')));
     }
     let p = result.payload;
     if (typeof p === 'string') { try { p = JSON.parse(p); } catch { /* keep text */ } }
@@ -402,9 +422,20 @@
     state.error = null;
     try {
       let events;
+      const demoEvents = () => {
+        const win = gameWindow();
+        return window.ParlayDemo.generate(win.from, state.scans, Math.max(6, (win.to - win.from) / 3600000))
+          .filter((e) => state.settings.sports.includes(e.sport_key) || !state.settings.sports.some((k) => DEMO_SPORTS.has(k)));
+      };
       if (hasKey()) {
-        events = await scanLive();
-        state.mode = 'odds';
+        try {
+          events = await scanLive();
+          state.mode = 'odds';
+        } catch (e) {
+          state.mode = 'demo';
+          state.demoReason = e.message || String(e);
+          events = demoEvents();
+        }
       } else {
         try {
           events = await scanEspn();
@@ -841,8 +872,10 @@
     } else if (state.mode === 'espn') {
       n.innerHTML = `<b>Live:</b> real games with DraftKings lines. To compare 10+ sportsbooks, add player props and unlock every sport, ${keyLink}.`;
     } else {
-      n.innerHTML = `<b>You're viewing sample odds, not real games.</b> Live odds couldn't load: ${esc(state.demoReason || 'unknown reason')}. ` +
-        `Press Scan now to retry, or ${keyLink}.`;
+      n.innerHTML = state.relayPausedUntil && Date.now() < state.relayPausedUntil
+        ? `<b>Showing sample games, not real ones.</b> ${esc(creditsMessage())}`
+        : `<b>You're viewing sample odds, not real games.</b> Live odds couldn't load: ${esc(state.demoReason || 'unknown reason')} ` +
+          `Press Scan now to retry, or ${keyLink}.`;
     }
     updateClock();
   }
@@ -854,7 +887,8 @@
     const mins = Math.max(0, Math.round((state.nextScan - Date.now()) / 60000));
     $('scanInfo').textContent = `${games} games · ${books} books · ${state.legs.length} picks · ` +
       `scanned ${state.lastScan.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ` +
-      (state.settings.autoScan ? `next in ${mins}m` : 'auto-scan off') +
+      (state.relayPausedUntil > Date.now() ? `paused until ${new Date(state.relayPausedUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+        : state.settings.autoScan ? `next in ${mins}m` : 'auto-scan off') +
       (state.researchNote ? ` · ${state.researchNote}` : '') +
       (state.remaining != null ? ` · ${state.remaining} Odds API credits left` : '');
     $('usage').hidden = !state.relayOn;
@@ -1105,6 +1139,7 @@
 
   setInterval(() => {
     if (!state.settings.autoScan) return updateClock(); // credit saver: only scan when asked
+    if (state.relayPausedUntil && Date.now() < state.relayPausedUntil) return updateClock(); // out of credits
     if (document.hidden && live()) return; // don't spend API credits on a hidden tab
     if (state.nextScan && Date.now() >= state.nextScan) scan();
     else updateClock();
