@@ -41,7 +41,7 @@
     padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   header { display: flex; align-items: center; gap: 12px; padding: 18px 0; flex-wrap: wrap; }
   .logo { font-weight: 800; font-size: 22px; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; }
-  .logo span { background: var(--brand); color: var(--brand-ink); border-radius: 8px; padding: 2px 8px; font-size: 14px; }
+  .logo img { width: 36px; height: 36px; border-radius: 9px; display: block; flex: none; }
   .status { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
   .pill { border-radius: 999px; padding: 3px 10px; font-weight: 600; font-size: 12px; background: var(--chip); color: var(--ink); }
   .pill.live { background: var(--live-bg); color: var(--live-ink); }
@@ -237,7 +237,7 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="logo"><span>PP</span> Parlay Picker</div>
+    <div class="logo"><img src="icons/icon-192.png" width="36" height="36" alt="" decoding="async"> Parlay Picker</div>
     <div class="hdr-actions">
       <button id="setBtn" class="iconbtn" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
       <a href="#help" class="helpbtn" data-page="help" aria-label="How it works" title="How it works">?</a>
