@@ -3,8 +3,8 @@
  * and ESPN's own matchup predictor, from ESPN's public JSON feeds.
  *
  * Parsing is pure (testable). Fetching is done by the caller through a
- * `get(url)` function, so the same code works with a direct fetch or the
- * claude.ai Firecrawl relay.
+ * `get(url)` function, so the same code works with a direct fetch or
+ * any other fetcher (used by tests).
  */
 (function (root, factory) {
   const api = factory();

@@ -4,9 +4,17 @@ A simple web app that scans sportsbook odds and builds parlays for a goal you ty
 like **"I want to turn $10 into $100"**.
 
 ## Run it
-No install or build step. Either:
+Live site (GitHub Pages): https://justforbills93-dev.github.io/Parlay-Picker/
+
+No install or build step. You can also:
 - open `index.html` in a browser, or
 - serve the folder: `python3 -m http.server 8000` and go to http://localhost:8000
+
+All data is fetched straight from your browser. There is no server, connector or paid relay. claude.ai pages
+block outside requests, so a copy opened inside claude.ai shows sample games and links to the live site.
+
+### Turning on GitHub Pages
+The repo must be public for free Pages. Then Settings → Pages → Deploy from a branch → `main`, `/ (root)` → Save.
 
 With no key it runs **live** on real games using the current DraftKings lines ESPN publishes (moneyline, spread,
 total) for the leagues ESPN covers. If that can't load, it falls back to **demo mode** with sample odds and says why.
@@ -15,11 +23,7 @@ total) for the leagues ESPN covers. If that can't load, it falls back to **demo 
 1. Get a free API key at https://the-odds-api.com (500 credits/month free; paid plans give more).
 2. Click **⚙ Settings**, paste the key, pick your sports, and press **Save & scan**.
 
-The key is stored only in your browser.
-
-Inside a claude.ai private page, browsers block direct calls to outside sites, so the app sends each odds
-request through your Firecrawl connector instead (about 1 Firecrawl credit per request). Your Odds API key
-travels inside that request URL to Firecrawl. Opened as a normal file or website, the app calls the odds API directly. The odds feed covers DraftKings, FanDuel, BetMGM, Caesars,
+The key is stored only in your browser and sent only to The Odds API. The odds feed covers DraftKings, FanDuel, BetMGM, Caesars,
 BetRivers, Fanatics, ESPN BET, Bovada, BetOnline, Pinnacle and more, depending on the region you pick.
 Settings shows roughly how many credits each scan uses. Raise the re-scan time to stay inside the free plan.
 
@@ -66,10 +70,9 @@ can't go in daily parlays. Game research covers the US leagues and the major soc
 - **Auto re-scan** on a timer (default 15 min) and when you come back to the tab. Only games that haven't started are used.
 
 ## Credits used
-On the claude.ai page each live request goes through your Firecrawl connector and costs about 1 Firecrawl credit.
-The status bar shows **Firecrawl: N credits this visit · N today**. **Auto-scan: on/off** turns timed re-scans off,
-so the page only scans when you press Scan now. Opening `index.html` directly (not on claude.ai) fetches ESPN data
-without Firecrawl. Nothing is fetched while the tab is hidden.
+ESPN data is free. The Odds API (optional key) charges 1 credit per market per region per request; Settings
+shows an estimate. **Auto-scan: on/off** turns timed re-scans off, so the page only scans when you press
+Scan now. Nothing is fetched while the tab is hidden.
 
 ## Game research
 On every scan (refreshed every 60 minutes by default) the app reads ESPN's public data for each game:
