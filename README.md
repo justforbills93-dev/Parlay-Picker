@@ -6,7 +6,7 @@ like **"I want to turn $10 into $100"**.
 ## Run it
 No install or build step. Either:
 - open `index.html` in a browser, or
-- serve the folder: `python3 -m http.server -d parlay-picker 8000` and go to http://localhost:8000
+- serve the folder: `python3 -m http.server 8000` and go to http://localhost:8000
 
 With no key it runs **live** on real games using the current DraftKings lines ESPN publishes (moneyline, spread,
 total) for the leagues ESPN covers. If that can't load, it falls back to **demo mode** with sample odds and says why.
@@ -107,4 +107,4 @@ independent), landing near your payout target, ranked by chance of winning and v
 - Some books' terms forbid automated scraping. This app reads a licensed odds feed and doesn't scrape anyone.
 
 ## Tests
-`node --test parlay-picker/engine.test.js`
+`node --test engine.test.js`

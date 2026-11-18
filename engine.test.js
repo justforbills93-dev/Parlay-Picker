@@ -1,4 +1,4 @@
-// Run: node --test parlay-picker/engine.test.js
+// Run: node --test engine.test.js
 const test = require('node:test');
 const assert = require('node:assert');
 const E = require('./engine.js');
