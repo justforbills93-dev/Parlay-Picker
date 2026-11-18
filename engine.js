@@ -139,6 +139,11 @@
           marketLabel: MARKET_LABELS[g.market] || g.market,
           isProp: isProp(g.market),
           pick: pickLabel(ev, g.market, g.outcome),
+          outcome: g.outcome.name,
+          point: g.outcome.point ?? null,
+          who: g.outcome.description || '',
+          home: ev.home_team,
+          away: ev.away_team,
           price: best.price,
           book: best.bookTitle,
           prob,
@@ -391,6 +396,50 @@
     return { legs, mult, prob, ev: prob * mult - 1, exact, risk: riskLevel(prob) };
   }
 
+  /* ---------- settling tracked bets ---------- */
+
+  const nm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  function sameName(a, b) {
+    a = nm(a); b = nm(b);
+    if (!a || !b) return false;
+    if (a === b || a.includes(b) || b.includes(a)) return true;
+    const la = a.split(' ').pop(), lb = b.split(' ').pop();
+    return la === lb && la.length > 3;
+  }
+
+  /**
+   * Result of one leg given the final score: 'won' | 'lost' | 'push' | null
+   * (null = can't tell, e.g. player props, which are settled by hand).
+   * game = {completed, home:{name,score}, away:{name,score}} (oriented to the leg's own home/away).
+   */
+  function settleLeg(leg, game) {
+    if (!game || !game.completed || leg.isProp) return null;
+    const hs = game.home.score, as = game.away.score;
+    if (hs == null || as == null || isNaN(hs) || isNaN(as)) return null;
+    const cmp = (x) => (x > 0 ? 'won' : x < 0 ? 'lost' : 'push');
+    if (leg.market === 'totals') return leg.point == null ? null : cmp(leg.outcome === 'Over' ? hs + as - leg.point : leg.point - (hs + as));
+    const isHome = sameName(leg.outcome, leg.home), isAway = sameName(leg.outcome, leg.away);
+    if (leg.market === 'h2h') {
+      if (leg.outcome === 'Draw') return hs === as ? 'won' : 'lost';
+      if (!isHome && !isAway) return null;
+      if (hs === as) return /^soccer/.test(leg.sport || '') ? 'lost' : 'push'; // soccer: a draw loses a team-win bet
+      return (isHome ? hs > as : as > hs) ? 'won' : 'lost';
+    }
+    if (leg.market === 'spreads') {
+      if (leg.point == null || (!isHome && !isAway)) return null;
+      return cmp((isHome ? hs - as : as - hs) + leg.point);
+    }
+    return null;
+  }
+
+  // Whole-bet result from leg results. Pushed legs drop out (priced at 1.0).
+  function settleBet(legResults, legs, stake) {
+    if (legResults.some((r) => r === 'lost')) return { status: 'lost', payout: 0 };
+    if (legResults.some((r) => !r)) return { status: 'pending', payout: null };
+    const mult = legs.reduce((a, l, i) => a * (legResults[i] === 'push' ? 1 : l.price), 1);
+    return { status: legResults.every((r) => r === 'push') ? 'push' : 'won', payout: stake * mult };
+  }
+
   /* ---------- risk spectrum ---------- */
 
   const RISK_TIERS = [
@@ -454,6 +503,6 @@
   return {
     SHARP_BOOKS, MARKET_LABELS, RISK_TIERS,
     americanToDecimal, decimalToAmerican, fmtAmerican,
-    buildLegs, findParlays, findExact, findByLegCount, fillAround, slipWarnings, minPayout, gameCount, legType, summarize, riskLevel, oneIn, parseGoal,
+    buildLegs, findParlays, findExact, findByLegCount, fillAround, slipWarnings, settleLeg, settleBet, sameName, minPayout, gameCount, legType, summarize, riskLevel, oneIn, parseGoal,
   };
 });

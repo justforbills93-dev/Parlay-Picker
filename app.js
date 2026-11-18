@@ -5,7 +5,7 @@
   const R = window.ParlayResearch;
   const $ = (id) => document.getElementById(id);
 
-  // Starter list for demo mode. With an API key, the full live list of every
+  // Starter list until the live list loads. With an API key, the full live list of every
   // sport the odds feed covers replaces it (it changes with the seasons).
   const FALLBACK_SPORTS = [
     ['American Football', 'americanfootball_nfl', 'NFL'], ['American Football', 'americanfootball_ncaaf', 'NCAAF'],
@@ -28,7 +28,6 @@
     ['Aussie Rules', 'aussierules_afl', 'AFL'], ['Lacrosse', 'lacrosse_pll', 'PLL'], ['Handball', 'handball_germany_bundesliga', 'Handball Bundesliga'],
     ['Golf', 'golf_masters_tournament_winner', 'Masters (futures)', true], ['Politics', 'politics_us_presidential_election_winner', 'US Election (futures)', true],
   ].map(([group, key, title, outrights]) => ({ group, key, title, active: true, has_outrights: !!outrights }));
-  const DEMO_SPORTS = new Set(['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'soccer_epl']);
   const PROP_MARKETS = {
     basketball_nba: 'player_points,player_rebounds,player_assists,player_threes',
     basketball_ncaab: 'player_points,player_rebounds,player_assists',
@@ -62,7 +61,7 @@
     settings: load(), events: [], legs: [], scans: 0, lastScan: null, nextScan: null,
     remaining: null, error: null, filter: new Set(), selectedTier: null, scanning: false,
     research: {}, researchNote: '', catalog: loadCatalog(), loads: loadBox(),
-    mode: '', demoReason: '', memo: new Map(),
+    mode: '', error: null, memo: new Map(), base: new Map(), bets: loadBets(), lastSettle: 0,
 
     legCount: 0, openRow: 0, types: new Set(['ml', 'spread', 'total', 'prop']),
     slip: loadSlip(), lockSlip: false, slipOpen: false, legById: new Map(), byoQuery: '',
@@ -147,10 +146,9 @@
   function save() {
     try { localStorage.setItem('pp-settings', JSON.stringify(state.settings)); } catch { /* private mode */ }
   }
-  // Modes: 'odds' = Odds API key (10+ books), 'espn' = no key, live DraftKings
-  // lines from ESPN's scoreboard, 'demo' = sample data when neither works.
+  // Modes: 'odds' = Odds API key (10+ books), 'espn' = free live DraftKings lines
+  // from ESPN's scoreboard. There is no sample-data mode: if nothing loads, we say so.
   const hasKey = () => !!state.settings.apiKey.trim();
-  const live = () => state.mode !== 'demo';
 
   /* ---------- formatting ---------- */
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -372,66 +370,167 @@
     $('scanBtn').textContent = 'Scanning…';
     state.error = null;
     try {
-      let events;
-      const demoEvents = () => {
-        const win = gameWindow();
-        return window.ParlayDemo.generate(win.from, state.scans, Math.max(6, (win.to - win.from) / 3600000))
-          .filter((e) => chosenKeys().includes(e.sport_key) || !chosenKeys().some((k) => DEMO_SPORTS.has(k)));
-      };
-      if (IN_CLAUDE) {
-        state.mode = 'demo';
-        state.demoReason = 'claude';
-        events = demoEvents();
-      } else if (hasKey()) {
-        try {
-          events = await scanLive();
-          state.mode = 'odds';
-        } catch (e) {
-          state.mode = 'demo';
-          state.demoReason = e.message || String(e);
-          events = demoEvents();
-        }
-      } else {
-        try {
-          events = await scanEspn();
-          if (!events.length) throw new Error(`no games with posted lines ${windowLabel()} for your sports. Try a longer day range or more sports.`);
-          state.mode = 'espn';
-        } catch (e) {
-          state.mode = 'demo';
-          state.demoReason = e.message || String(e);
-          const win = gameWindow();
-          events = window.ParlayDemo.generate(win.from, state.scans, Math.max(6, (win.to - win.from) / 3600000)).filter((e) => chosenKeys().includes(e.sport_key) || !chosenKeys().some((k) => DEMO_SPORTS.has(k)));
-        }
+      if (IN_CLAUDE) throw new Error(`claude.ai previews can't load outside data. Open the live site: ${LIVE_SITE}`);
+      let events = null, keyErr = null;
+      if (hasKey()) {
+        try { events = await scanLive(); state.mode = 'odds'; } catch (e) { keyErr = e.message || String(e); }
       }
+      if (!events) {
+        events = await scanEspn();
+        state.mode = 'espn';
+        state.keyNote = keyErr ? `Your Odds API key didn't work (${keyErr}), so this scan used the free DraftKings feed.` : '';
+      } else state.keyNote = '';
+      if (!events.length) throw new Error(`No games with posted lines ${windowLabel()} for your sports. Try a longer day range or more sports.`);
       const now = Date.now();
-      state.events = events.filter((e) => new Date(e.commence_time).getTime() > now); // pre-game only
-      let legs = E.buildLegs(state.events, { minBooks: state.mode === 'odds' ? 3 : state.mode === 'espn' ? 1 : 2 });
+      const evs = events.filter((e) => new Date(e.commence_time).getTime() > now); // pre-game only
+      if (!evs.length) throw new Error(`Every game in ${windowLabel()} has already started. Try a longer day range.`);
+      state.events = evs;
+      let legs = E.buildLegs(state.events, { minBooks: state.mode === 'odds' ? 3 : 1 });
       if (state.settings.research) {
-        if (live()) {
-          try { await loadResearch(state.events); } catch (e) { state.researchNote = 'research unavailable'; console.warn(e); }
-        } else {
-          state.research = window.ParlayDemo.generateResearch(state.events);
-          addFatigue(state.events);
-          state.researchNote = 'sample research';
-        }
+        try { await loadResearch(state.events); } catch (e) { state.researchNote = 'research unavailable'; console.warn(e); }
         legs = R.applyResearch(legs, state.research);
       } else {
         state.researchNote = '';
       }
+      // Line movement vs the first price we saw for each pick this session.
+      const seen = new Set();
+      for (const l of legs) {
+        seen.add(l.id);
+        if (!state.base.has(l.id)) state.base.set(l.id, l.price);
+        const b0 = state.base.get(l.id);
+        if (Math.abs(b0 - l.price) > 1e-9) l.moved = { from: b0, to: l.price };
+      }
+      for (const id of [...state.base.keys()]) if (!seen.has(id)) state.base.delete(id);
       state.legs = legs;
       state.legById = new Map(legs.map((l) => [l.id, l]));
       state.scans++;
       state.lastScan = new Date();
     } catch (e) {
-      state.error = e.message || String(e);
+      state.error = e.message || String(e); // keep the last good data on screen, marked stale
     } finally {
       state.scanning = false;
       $('scanBtn').disabled = false;
       $('scanBtn').textContent = 'Scan now';
-      state.nextScan = Date.now() + Math.max(2, state.settings.refresh) * 60000;
+      state.nextScan = Date.now() + (state.error ? 30000 : refreshMs());
       renderAll();
+      settleBets();
     }
   }
+  // Free ESPN data refreshes every minute. With an Odds API key the timer follows
+  // Settings so the free 500 credits/month last.
+  const refreshMs = () => (state.mode === 'odds' ? Math.max(2, state.settings.refresh) : 1) * 60000;
+
+
+  /* ---------- bet tracker ---------- */
+  function loadBets() { try { return JSON.parse(localStorage.getItem('pp-bets') || '[]'); } catch { return []; } }
+  function saveBets() { try { localStorage.setItem('pp-bets', JSON.stringify(state.bets)); } catch { /* ignore */ } }
+
+  function trackBet(ids) {
+    const legs = ids.map((id) => state.legById.get(id)).filter(Boolean);
+    if (!legs.length) return false;
+    const sig = legs.map((l) => l.id).sort().join('~');
+    if (state.bets.some((b) => b.status === 'pending' && b.sig === sig)) return 'dup';
+    const stake = E.parseGoal($('ask').value).stake || 10;
+    state.bets.unshift({
+      id: 'b' + Date.now(), sig, at: Date.now(), stake, status: 'pending', payout: null,
+      legs: legs.map((l) => ({ id: l.id, pick: l.pick, game: l.game, sport: l.sport, sportTitle: l.sportTitle, commence: l.commence,
+        price: l.price, prob: l.prob, book: l.book, market: l.market, outcome: l.outcome, point: l.point,
+        home: l.home, away: l.away, isProp: l.isProp, result: null })),
+    });
+    saveBets(); renderTracker(); updateCounts();
+    settleBets();
+    return true;
+  }
+
+  function resolveBet(b) {
+    const r = E.settleBet(b.legs.map((l) => l.result), b.legs, b.stake);
+    b.status = r.status; b.payout = r.payout;
+  }
+
+  // Look up final scores for any started games in pending bets and settle what we can.
+  async function settleBets(force) {
+    if (IN_CLAUDE || state.settling) return;
+    const pending = state.bets.filter((b) => b.status === 'pending');
+    const now = Date.now();
+    if (!pending.length || (!force && now - state.lastSettle < 3 * 60000)) return;
+    const need = pending.flatMap((b) => b.legs.filter((l) => !l.result && !l.isProp && R.LEAGUES[l.sport] && new Date(l.commence).getTime() < now - 30 * 60000));
+    if (!need.length) { return; }
+    state.settling = true; state.lastSettle = now;
+    try {
+      const bySport = new Map();
+      for (const l of need) { if (!bySport.has(l.sport)) bySport.set(l.sport, []); bySport.get(l.sport).push(l); }
+      let changed = false;
+      for (const [sport, legs] of bySport) {
+        const ts = legs.map((l) => new Date(l.commence).getTime());
+        const urls = R.scoreboardUrls(sport, new Date(Math.min(...ts) - 3 * 3600000), new Date(Math.max(...ts) + 14 * 3600000));
+        const boards = await pool(urls, 3, (u) => memoJSON(u, 2 * 60000));
+        const games = boards.filter(Boolean).flatMap((b) => R.parseScoreboard(b));
+        for (const l of legs) {
+          const g = R.matchGame({ commence_time: l.commence, home_team: l.home, away_team: l.away }, games);
+          if (!g) continue;
+          const flip = !R.sameTeam(g.home.name, l.home);
+          const res = E.settleLeg(l, { completed: g.completed, home: flip ? g.away : g.home, away: flip ? g.home : g.away });
+          if (res) {
+            for (const b of pending) for (const bl of b.legs) if (bl.id === l.id && !bl.result) { bl.result = res; changed = true; }
+          }
+        }
+      }
+      if (changed) { pending.forEach(resolveBet); saveBets(); renderTracker(); updateCounts(); }
+    } catch (e) { console.warn('settle', e); } finally { state.settling = false; }
+  }
+
+  function renderTracker() {
+    const stats = $('trackStats'), list = $('trackList');
+    if (!stats) return;
+    const done = state.bets.filter((b) => b.status !== 'pending');
+    const staked = done.reduce((a, b) => a + b.stake, 0);
+    const back = done.reduce((a, b) => a + (b.payout || 0), 0);
+    const won = done.filter((b) => b.status === 'won').length, lost = done.filter((b) => b.status === 'lost').length;
+    // Calibration: did legs we rated at X% win about X% of the time?
+    const legsDone = state.bets.flatMap((b) => b.legs).filter((l) => l.result === 'won' || l.result === 'lost');
+    const buckets = [[0, .3], [.3, .5], [.5, .7], [.7, 1.01]].map(([lo, hi]) => {
+      const ls = legsDone.filter((l) => l.prob >= lo && l.prob < hi);
+      return { lo, hi, n: ls.length, pred: ls.reduce((a, l) => a + l.prob, 0) / (ls.length || 1), act: ls.filter((l) => l.result === 'won').length / (ls.length || 1) };
+    }).filter((b) => b.n);
+    stats.innerHTML = state.bets.length ? `
+      <b>${won}-${lost}</b> settled${done.length - won - lost ? ` (${done.length - won - lost} push)` : ''} ·
+      staked ${money(staked)} · returned ${money(back)} ·
+      <b class="${back - staked >= 0 ? 'good' : 'bad'}">${back - staked >= 0 ? '+' : '-'}${money(Math.abs(back - staked))}${staked ? ` (${((back - staked) / staked * 100).toFixed(1)}% ROI)` : ''}</b>
+      ${buckets.length ? `<div style="margin-top:8px"><b>Does the chance we show match reality?</b> (single legs)<table><thead><tr><th>We said</th><th style="text-align:right">Legs</th><th style="text-align:right">Avg chance</th><th style="text-align:right">Actually won</th></tr></thead><tbody>
+        ${buckets.map((b) => `<tr><td>${Math.round(b.lo * 100)}–${Math.min(100, Math.round(b.hi * 100))}%</td><td class="num">${b.n}</td><td class="num">${pct(b.pred)}</td><td class="num">${pct(b.act)}</td></tr>`).join('')}</tbody></table>
+        <span class="note">Needs a few hundred legs before it means much.</span></div>` : ''}`
+      : 'No tracked bets yet. Tap <b>Track this bet</b> under any parlay.';
+    list.innerHTML = state.bets.map((b) => {
+      const mult = b.legs.reduce((a, l) => a * l.price, 1);
+      const sym = { won: '✓', lost: '✗', push: '–' };
+      return `<div class="card parlay">
+        <div class="top"><div class="payout">${money(b.stake)} <small>→ ${money(b.stake * mult)} if it hits</small></div>
+          <span class="tag ${b.status}">${b.status === 'won' ? 'Won ' + money(b.payout) : b.status === 'lost' ? 'Lost' : b.status === 'push' ? 'Push' : 'Pending'}</span></div>
+        <ul class="legs">${b.legs.map((l, i) => `<li><div><div class="p"><span class="res ${l.result || ''}">${sym[l.result] || '·'}</span>${esc(l.pick)}</div>
+            <div class="g">${esc(l.sportTitle)} · ${esc(l.game)} · ${when(l.commence)}</div></div>
+          <div class="o">${odds(l.price)}${!l.result && new Date(l.commence) < Date.now() ? `<small><button class="mini" data-mark="${b.id}|${i}|won">Won</button> <button class="mini" data-mark="${b.id}|${i}|lost">Lost</button> <button class="mini" data-mark="${b.id}|${i}|push">Push</button></small>` : ''}</div></li>`).join('')}</ul>
+        <div class="note">Tracked ${new Date(b.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · wins about ${pct(b.legs.reduce((a, l) => a * l.prob, 1))}
+          <button class="link" data-delbet="${b.id}">Delete</button></div></div>`;
+    }).join('');
+  }
+
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-track]');
+    if (t) {
+      const r = trackBet(JSON.parse(t.dataset.track));
+      t.textContent = r === true ? 'Tracked ✓' : r === 'dup' ? 'Already tracked' : 'Pick no longer available';
+      return;
+    }
+    const m = e.target.closest('[data-mark]');
+    if (m) {
+      const [id, i, res] = m.dataset.mark.split('|');
+      const b = state.bets.find((x) => x.id === id);
+      if (b) { b.legs[+i].result = res; resolveBet(b); saveBets(); renderTracker(); updateCounts(); }
+      return;
+    }
+    const d = e.target.closest('[data-delbet]');
+    if (d && confirm('Delete this tracked bet?')) { state.bets = state.bets.filter((x) => x.id !== d.dataset.delbet); saveBets(); renderTracker(); updateCounts(); }
+  });
 
   /* ---------- rendering ---------- */
   function sportsFilter() {
@@ -466,7 +565,8 @@
   function placeRow(legs) {
     const ids = esc(JSON.stringify(legs.map((l) => l.id)));
     return `<div class="place"><span class="note">Place this bet:</span>
-      ${Object.entries(BOOKS).map(([k, b]) => `<button type="button" class="bookbtn" data-place="${ids}" data-book="${k}">${b.name}</button>`).join('')}</div>`;
+      ${Object.entries(BOOKS).map(([k, b]) => `<button type="button" class="bookbtn" data-place="${ids}" data-book="${k}">${b.name}</button>`).join('')}
+      <button type="button" class="bookbtn" data-track="${ids}">Track this bet</button></div>`;
   }
 
   function openPlace(ids, book) {
@@ -517,6 +617,7 @@
       const side = l.pick.startsWith(awayName) ? r.away : l.pick.startsWith(l.game.split(' @ ')[1]) ? r.home : null;
       if (side && side.form.length) bits.push(`<span>Last 5: ${side.form.map((f) => f.result).join('')}</span>`);
     }
+    if (l.moved) bits.push(`<span class="${l.moved.to > l.moved.from ? 'good' : 'bad'}">Line moved ${odds(l.moved.from)} → ${odds(l.moved.to)}</span>`);
     for (const n of l.notes || []) bits.push(`<span class="good">${esc(n)}</span>`);
     for (const w of l.warnings || []) bits.push(`<span class="warn">⚠ ${esc(w)}</span>`);
     return bits.length ? `<div class="g rn">${bits.join(' · ')}</div>` : '';
@@ -729,8 +830,8 @@
       return `<details class="card game">
         <summary><b>${esc(e.away_team)} @ ${esc(e.home_team)}</b>
           <span class="note">${esc(e.sport_title || '')} · ${when(e.commence_time)}${pred ? ' · ' + pred : ''}</span>
-          ${alerts ? `<span class="pill demo">⚠ ${alerts} star${alerts > 1 ? 's' : ''} questionable/out</span>` : ''}
-          ${tired.length ? `<span class="pill demo">😮‍💨 ${esc(tired.join(', '))} tired</span>` : ''}</summary>
+          ${alerts ? `<span class="pill caution">⚠ ${alerts} star${alerts > 1 ? 's' : ''} questionable/out</span>` : ''}
+          ${tired.length ? `<span class="pill caution">😮‍💨 ${esc(tired.join(', '))} tired</span>` : ''}</summary>
         <div class="teams">${teamBlock(r.away, 'away')}${teamBlock(r.home, 'home')}</div>
         <div class="note"><b>Head-to-head:</b> ${h2h.length ? h2h.join(' · ') : 'No meetings listed'}</div>
       </details>`;
@@ -815,26 +916,24 @@
 
   function renderStatus() {
     const m = $('mode');
-    if (state.error) { m.className = 'pill err'; m.innerHTML = '<i class="dot"></i>Error'; }
+    const have = state.legs.length > 0;
+    if (state.error) { m.className = 'pill err'; m.innerHTML = `<i class="dot"></i>${have ? 'Stale' : 'No data'}`; }
     else if (state.mode === 'odds') { m.className = 'pill live'; m.innerHTML = '<i class="dot"></i>Live odds'; }
     else if (state.mode === 'espn') { m.className = 'pill live'; m.innerHTML = '<i class="dot"></i>Live · DraftKings'; }
-    else { m.className = 'pill demo'; m.innerHTML = '<i class="dot"></i>Demo'; }
-    const n = $('demoNote');
-    n.style.display = state.mode === 'odds' && !state.error ? 'none' : '';
+    else { m.className = 'pill'; m.innerHTML = '<i class="dot"></i>Loading'; }
+    const n = $('statusNote');
+    n.style.display = state.mode === 'odds' && !state.error && !state.keyNote ? 'none' : '';
     const keyLink = 'get a free key at <a href="https://the-odds-api.com/" target="_blank" rel="noopener">the-odds-api.com</a> and paste it in <a href="#" id="openSet2">Settings</a>';
     if (state.error) {
-      n.innerHTML = `<b>Scan failed.</b> ${esc(state.error)} <a href="#" id="openSet2">Open Settings</a>`;
+      n.innerHTML = `<b>${have ? 'Couldn\'t refresh, showing the last good scan.' : 'Couldn\'t load odds.'}</b> ${esc(state.error)} ` +
+        `Retrying automatically. <a href="#" id="openSet2">Open Settings</a>`;
     } else if (state.mode === 'espn') {
       const need = keyNeededGroups();
-      n.innerHTML = `<b>Live:</b> real games with DraftKings lines. ` +
+      n.innerHTML = `<b>Live:</b> real games with DraftKings lines, refreshed every minute. ` + (state.keyNote ? esc(state.keyNote) + ' ' : '') +
         (need.length ? `<b>${esc(need.join(', '))}</b> ${need.length === 1 ? 'isn\'t' : 'aren\'t'} included: ESPN posts no odds for ${need.length === 1 ? 'it' : 'them'}. ` : '') +
         `To ${need.length ? 'add ' + esc(need.join(', ')) + ', ' : ''}compare 10+ sportsbooks and add player props, ${keyLink}.`;
-    } else {
-      n.innerHTML = state.demoReason === 'claude'
-        ? `<b>This is a preview with sample games.</b> claude.ai pages can't load outside data, so live odds run on the free live site: ` +
-          `<a href="${LIVE_SITE}" target="_blank" rel="noopener"><b>open Parlay Picker live</b></a>.`
-        : `<b>You're viewing sample odds, not real games.</b> Live odds couldn't load: ${esc(state.demoReason || 'unknown reason')} ` +
-          `Press Scan now to retry, or ${keyLink}.`;
+    } else if (state.keyNote) {
+      n.innerHTML = esc(state.keyNote);
     }
     updateClock();
   }
@@ -843,10 +942,11 @@
     if (!state.lastScan) return;
     const games = new Set(state.legs.map((l) => l.eventId)).size;
     const books = new Set(state.legs.flatMap((l) => l.quotes.map((q) => q.book))).size;
-    const mins = Math.max(0, Math.round((state.nextScan - Date.now()) / 60000));
+    const secs = Math.max(0, Math.round((state.nextScan - Date.now()) / 1000));
+    const mins = secs >= 90 ? Math.round(secs / 60) + 'm' : secs + 's';
     $('scanInfo').textContent = `${games} games · ${books} books · ${state.legs.length} picks · ` +
       `scanned ${state.lastScan.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ` +
-      (state.settings.autoScan ? `next in ${mins}m` : 'auto-scan off') +
+      (state.settings.autoScan ? `next in ${mins}` : 'auto-scan off') +
       (state.researchNote ? ` · ${state.researchNote}` : '') +
       (state.remaining != null ? ` · ${state.remaining} Odds API credits left` : '');
     $('saverBtn').textContent = state.settings.autoScan ? 'Auto-scan: on' : 'Auto-scan: off';
@@ -863,6 +963,7 @@
     renderByo();
     renderSlip();
     renderResearch();
+    renderTracker();
     updateCounts();
   }
 
@@ -939,11 +1040,11 @@
             : state.mode !== 'odds' && !R.LEAGUES[c.key] ? ' <span class="note">(needs key)</span>' : '';
           return `<label title="${esc(c.key)}"><input type="checkbox" value="${esc(c.key)}" data-group="${esc(g)}" ${sel.has(c.key) && !off ? 'checked' : ''} ${off ? 'disabled' : ''}> ${esc(c.title)}${why}</label>`;
         }).join('')}</div></fieldset>`).join('');
-    $('sportsNote').textContent = state.mode === 'espn'
+    $('sportsNote').textContent = state.mode !== 'odds'
       ? 'Without a key, live odds cover the leagues ESPN posts lines for (NFL, NBA, NHL, MLB, college, WNBA, major soccer). Sports marked "needs key" (tennis, MMA, cricket and others) need a free Odds API key in Settings.'
       : state.mode === 'odds'
       ? 'This list comes live from the odds feed: every sport with betting lines right now.'
-      : 'Demo mode only has sample games for NBA, NFL, NHL and EPL. Add your API key in Settings to load the full live list of every sport.';
+      : 'Add a free Odds API key in Settings to load the full live list of every sport.';
     sportCount();
     $('sportsDlg').showModal();
   }
@@ -956,7 +1057,7 @@
   }
 
   /* ---------- pages ---------- */
-  const PAGES = ['picks', 'risk', 'top', 'build', 'games', 'help'];
+  const PAGES = ['picks', 'risk', 'top', 'build', 'games', 'track', 'help'];
   function showPage(name, push = true) {
     if (!PAGES.includes(name)) name = 'picks';
     for (const p of PAGES) $('page-' + p).hidden = p !== name;
@@ -965,10 +1066,12 @@
       try { history.replaceState(null, '', '#' + name); } catch { location.hash = name; }
     }
     window.scrollTo(0, 0);
+    if (name === 'track') settleBets(true);
   }
   function updateCounts() {
     const set = (k, n) => { const el = document.querySelector(`[data-count="${k}"]`); if (el) el.textContent = n ? String(n) : ''; };
     set('build', state.slip.length);
+    set('track', state.bets.filter((b) => b.status === 'pending').length);
     set('games', Object.keys(state.research).filter((id) => state.events.some((e) => e.id === id)).length);
   }
   document.addEventListener('click', (e) => {
@@ -1090,16 +1193,16 @@
   $('saverBtn').addEventListener('click', () => {
     state.settings.autoScan = !state.settings.autoScan;
     save();
-    if (state.settings.autoScan) state.nextScan = Date.now() + Math.max(2, state.settings.refresh) * 60000;
+    if (state.settings.autoScan) state.nextScan = Date.now() + refreshMs();
     updateClock();
   });
 
   setInterval(() => {
     if (!state.settings.autoScan || IN_CLAUDE) return updateClock(); // only scan when asked / nothing live to fetch
-    if (document.hidden && live()) return; // don't spend API credits on a hidden tab
+    if (document.hidden) return; // don't scan a hidden tab
     if (state.nextScan && Date.now() >= state.nextScan) scan();
     else updateClock();
-  }, 15000);
+  }, 5000);
   document.addEventListener('visibilitychange', () => {
     if (state.settings.autoScan && !document.hidden && state.nextScan && Date.now() >= state.nextScan) scan();
   });

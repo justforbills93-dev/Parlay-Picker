@@ -117,8 +117,9 @@
         espnId: String(e.id),
         start: e.date,
         state: e.status?.type?.state || '',
-        home: home ? parseTeam(home) : null,
-        away: away ? parseTeam(away) : null,
+        completed: !!e.status?.type?.completed,
+        home: home ? { ...parseTeam(home), score: home.score != null ? Number(home.score) : null } : null,
+        away: away ? { ...parseTeam(away), score: away.score != null ? Number(away.score) : null } : null,
       };
     }).filter((g) => g.home && g.away);
   }

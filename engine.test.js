@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const E = require('./engine.js');
-const D = require('./demo.js');
+const D = require('./test-data.js');
 
 test('odds conversion round-trips', () => {
   assert.strictEqual(E.americanToDecimal(150), 2.5);
@@ -94,4 +94,34 @@ test('build around chosen legs', () => {
   const six = E.fillAround(legs, locked, 10, { exactTotal: 6 });
   assert.ok(!six || six.legs.length === 6);
   assert.strictEqual(E.fillAround(legs, locked, 1.01), null, 'picks already pay more than the goal');
+});
+
+test('settling bets from final scores', () => {
+  const mk = (o) => ({ home: 'Lakers', away: 'Celtics', sport: 'basketball_nba', isProp: false, price: 2, ...o });
+  const g = { completed: true, home: { score: 110 }, away: { score: 100 } };
+  assert.strictEqual(E.settleLeg(mk({ market: 'h2h', outcome: 'Lakers' }), g), 'won');
+  assert.strictEqual(E.settleLeg(mk({ market: 'h2h', outcome: 'Celtics' }), g), 'lost');
+  assert.strictEqual(E.settleLeg(mk({ market: 'spreads', outcome: 'Lakers', point: -10 }), g), 'push');
+  assert.strictEqual(E.settleLeg(mk({ market: 'spreads', outcome: 'Celtics', point: 10.5 }), g), 'won');
+  assert.strictEqual(E.settleLeg(mk({ market: 'totals', outcome: 'Over', point: 209.5 }), g), 'won');
+  assert.strictEqual(E.settleLeg(mk({ market: 'totals', outcome: 'Under', point: 209.5 }), g), 'lost');
+  assert.strictEqual(E.settleLeg(mk({ market: 'player_points', isProp: true }), g), null);
+  assert.strictEqual(E.settleLeg(mk({ market: 'h2h', outcome: 'Lakers' }), { ...g, completed: false }), null);
+  const soccer = { completed: true, home: { score: 1 }, away: { score: 1 } };
+  assert.strictEqual(E.settleLeg(mk({ sport: 'soccer_epl', market: 'h2h', outcome: 'Lakers' }), soccer), 'lost');
+  assert.strictEqual(E.settleLeg(mk({ sport: 'soccer_epl', market: 'h2h', outcome: 'Draw' }), soccer), 'won');
+  const legs = [mk({ price: 2 }), mk({ price: 3 })];
+  assert.deepStrictEqual(E.settleBet(['won', 'won'], legs, 10), { status: 'won', payout: 60 });
+  assert.deepStrictEqual(E.settleBet(['won', 'push'], legs, 10), { status: 'won', payout: 20 });
+  assert.strictEqual(E.settleBet(['won', 'lost'], legs, 10).status, 'lost');
+  assert.strictEqual(E.settleBet(['won', null], legs, 10).status, 'pending');
+  assert.strictEqual(E.settleBet(['lost', null], legs, 10).status, 'lost');
+});
+
+test('buildLegs keeps structured fields for settling', () => {
+  const ev = { id: 'g1', sport_key: 'x', home_team: 'A', away_team: 'B', commence_time: '2030-01-01T00:00:00Z',
+    bookmakers: [{ key: 'b1', title: 'B1', markets: [{ key: 'spreads', outcomes: [{ name: 'A', price: 1.9, point: -3.5 }, { name: 'B', price: 1.9, point: 3.5 }] }] },
+      { key: 'b2', title: 'B2', markets: [{ key: 'spreads', outcomes: [{ name: 'A', price: 1.95, point: -3.5 }, { name: 'B', price: 1.87, point: 3.5 }] }] }] };
+  const l = E.buildLegs([ev]).find((x) => x.outcome === 'A');
+  assert.strictEqual(l.point, -3.5); assert.strictEqual(l.home, 'A'); assert.strictEqual(l.away, 'B');
 });

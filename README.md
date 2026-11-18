@@ -10,14 +10,16 @@ No install or build step. You can also:
 - open `index.html` in a browser, or
 - serve the folder: `python3 -m http.server 8000` and go to http://localhost:8000
 
-All data is fetched straight from your browser. There is no server, connector or paid relay. claude.ai pages
-block outside requests, so a copy opened inside claude.ai shows sample games and links to the live site.
+All data is fetched straight from your browser. There is no server, connector or paid relay, so hosting and data cost $0.
+claude.ai previews block outside requests, so the app must be opened from the live site (or locally) to load data.
+**There is no demo mode.** If odds can't load, the app shows the error, keeps the last good scan marked "Stale", and retries.
 
 ### Turning on GitHub Pages
 The repo must be public for free Pages. Then Settings → Pages → Deploy from a branch → `main`, `/ (root)` → Save.
 
 With no key it runs **live** on real games using the current DraftKings lines ESPN publishes (moneyline, spread,
-total) for the leagues ESPN covers. If that can't load, it falls back to **demo mode** with sample odds and says why.
+total) for the leagues ESPN covers, **re-scanned every minute** while the tab is open. A pick whose price changed since
+you opened the page shows "Line moved".
 
 ## Compare every sportsbook (optional key)
 1. Get a free API key at https://the-odds-api.com (500 credits/month free; paid plans give more).
@@ -73,7 +75,13 @@ can't go in daily parlays. Game research covers the US leagues and the major soc
 - **Goal box**: understands "turn $10 into $100", "bet $20 to win $500", "safest bet for $25".
 - **Risk spectrum**: the best parlay at 5 levels, from Safest (~1.8x) to Moonshot (~60x).
 - **Best single picks**: the biggest gaps between the fair chance and the best price at any book, with every book's odds side by side.
-- **Auto re-scan** on a timer (default 15 min) and when you come back to the tab. Only games that haven't started are used.
+- **Auto re-scan** every minute on the free feed (the Odds API key timer follows Settings, default 15 min) and when you come back to the tab. Only games that haven't started are used.
+
+## Bet tracker
+**Track this bet** (under any parlay or in My parlay) saves it in your browser. Moneylines, spreads and totals settle
+automatically from ESPN final scores (pushes drop out of the parlay). Player props and unsupported sports you mark
+Won/Lost/Push yourself. The tracker shows record, profit/ROI, and a calibration table (legs we rated 30-50% vs how
+often they really won), so you can see whether the chances shown hold up over time.
 
 ## Credits used
 ESPN data is free. The Odds API (optional key) charges 1 credit per market per region per request; Settings
