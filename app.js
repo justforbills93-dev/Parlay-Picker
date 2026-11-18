@@ -118,7 +118,26 @@
     } catch { return {}; }
   }
   function saveBox() { try { localStorage.setItem('pp-box', JSON.stringify(state.loads)); } catch { /* full or blocked */ } }
-  const sportName = (k) => state.catalog.find((c) => c.key === k)?.title ||
+  // "all:<group>" (e.g. all:Tennis) means every event in that group the feed has
+  // right now. Tennis and other tours list each tournament separately and they
+  // change week to week, so this keeps the selection current.
+  function chosenKeys() {
+    const sel = state.settings.sports;
+    const out = new Set(sel.filter((k) => !k.startsWith('all:')));
+    for (const k of sel) {
+      if (!k.startsWith('all:')) continue;
+      const g = k.slice(4);
+      for (const c of state.catalog) if (c.group === g && c.active && !c.has_outrights) out.add(c.key);
+    }
+    return [...out];
+  }
+  const groupOf = (k) => state.catalog.find((c) => c.key === k)?.group || FALLBACK_SPORTS.find((c) => c.key === k)?.group ||
+    (k.startsWith('tennis_') ? 'Tennis' : k.split('_')[0]);
+  // Sports chosen that the free (no key) mode can't price: ESPN posts no odds for them.
+  function keyNeededGroups() {
+    return [...new Set(chosenKeys().filter((k) => !R.LEAGUES[k]).map(groupOf))];
+  }
+  const sportName = (k) => (k.startsWith('all:') ? 'All ' + k.slice(4) : null) || state.catalog.find((c) => c.key === k)?.title ||
     FALLBACK_SPORTS.find((c) => c.key === k)?.title || state.legs.find((l) => l.sport === k)?.sportTitle || k;
 
   function load() {
@@ -188,14 +207,17 @@
       try { localStorage.setItem('pp-catalog', JSON.stringify({ at: Date.now(), list: state.catalog })); } catch { /* ignore */ }
     }
     const playable = new Set(state.catalog.filter((x) => x.active && !x.has_outrights).map((x) => x.key));
-    const keys = s.sports.filter((k) => playable.has(k));
+    const keys = chosenKeys().filter((k) => playable.has(k));
     if (!keys.length) throw new Error('None of your chosen sports have games right now. Tap "Choose sports" to add more.');
 
     // Spreads/totals don't exist for every sport (tennis, MMA...), so ask for
     // moneylines alone if the full request is refused.
     const odds = (k, markets) => getJSON(`${API}/sports/${k}/odds?apiKey=${key}&regions=${s.regions}&markets=${markets}` +
       `&oddsFormat=decimal&includeLinks=true&commenceTimeFrom=${isoNoMs(now)}&commenceTimeTo=${isoNoMs(to)}`);
-    const lists = await pool(keys, 6, (k) => odds(k, 'h2h,spreads,totals').catch(() => odds(k, 'h2h')));
+    // Remember sports that only offer moneylines (most tennis), so later scans ask once.
+    state.h2hOnly = state.h2hOnly || new Set();
+    const lists = await pool(keys, 6, (k) => (state.h2hOnly.has(k) ? odds(k, 'h2h')
+      : odds(k, 'h2h,spreads,totals').catch(() => { state.h2hOnly.add(k); return odds(k, 'h2h'); })));
     const events = lists.filter(Boolean).flat();
 
     if (s.props) {
@@ -257,7 +279,8 @@
     addFatigue(events);
     if (state.settings.fatigue) await loadPlayerLoads(events);
     const unsupported = events.filter((e) => !R.LEAGUES[e.sport_key]).length;
-    state.researchNote = `research on ${matched}/${events.length - unsupported} games` + (failed ? ` (${failed} failed)` : '');
+    const covered = events.length - unsupported;
+    state.researchNote = covered ? `research on ${matched}/${covered} games` + (failed ? ` (${failed} failed)` : '') : '';
   }
 
   // Fatigue counts finished games plus any games the team plays before this one
@@ -322,8 +345,11 @@
 
   async function scanEspn() {
     const win = gameWindow();
-    const keys = state.settings.sports.filter((k) => R.LEAGUES[k]);
-    if (!keys.length) throw new Error('none of your chosen sports have free live odds. Add an Odds API key in Settings for those.');
+    const keys = chosenKeys().filter((k) => R.LEAGUES[k]);
+    if (!keys.length) {
+      const g = keyNeededGroups();
+      throw new Error(`${g.length ? g.join(', ') : 'your chosen sports'} need${g.length === 1 ? 's' : ''} a free Odds API key: ESPN shows these matches but posts no odds for them. Add the key in Settings.`);
+    }
     let firstErr = null, ok = 0;
     const lists = await pool(keys, 4, async (k) => {
       const boards = await Promise.all(R.scoreboardUrls(k, win.from, win.to).map((u) =>
@@ -350,7 +376,7 @@
       const demoEvents = () => {
         const win = gameWindow();
         return window.ParlayDemo.generate(win.from, state.scans, Math.max(6, (win.to - win.from) / 3600000))
-          .filter((e) => state.settings.sports.includes(e.sport_key) || !state.settings.sports.some((k) => DEMO_SPORTS.has(k)));
+          .filter((e) => chosenKeys().includes(e.sport_key) || !chosenKeys().some((k) => DEMO_SPORTS.has(k)));
       };
       if (IN_CLAUDE) {
         state.mode = 'demo';
@@ -374,7 +400,7 @@
           state.mode = 'demo';
           state.demoReason = e.message || String(e);
           const win = gameWindow();
-          events = window.ParlayDemo.generate(win.from, state.scans, Math.max(6, (win.to - win.from) / 3600000)).filter((e) => state.settings.sports.includes(e.sport_key) || !state.settings.sports.some((k) => DEMO_SPORTS.has(k)));
+          events = window.ParlayDemo.generate(win.from, state.scans, Math.max(6, (win.to - win.from) / 3600000)).filter((e) => chosenKeys().includes(e.sport_key) || !chosenKeys().some((k) => DEMO_SPORTS.has(k)));
         }
       }
       const now = Date.now();
@@ -799,7 +825,10 @@
     if (state.error) {
       n.innerHTML = `<b>Scan failed.</b> ${esc(state.error)} <a href="#" id="openSet2">Open Settings</a>`;
     } else if (state.mode === 'espn') {
-      n.innerHTML = `<b>Live:</b> real games with DraftKings lines. To compare 10+ sportsbooks, add player props and unlock every sport, ${keyLink}.`;
+      const need = keyNeededGroups();
+      n.innerHTML = `<b>Live:</b> real games with DraftKings lines. ` +
+        (need.length ? `<b>${esc(need.join(', '))}</b> ${need.length === 1 ? 'isn\'t' : 'aren\'t'} included: ESPN posts no odds for ${need.length === 1 ? 'it' : 'them'}. ` : '') +
+        `To ${need.length ? 'add ' + esc(need.join(', ')) + ', ' : ''}compare 10+ sportsbooks and add player props, ${keyLink}.`;
     } else {
       n.innerHTML = state.demoReason === 'claude'
         ? `<b>This is a preview with sample games.</b> claude.ai pages can't load outside data, so live odds run on the free live site: ` +
@@ -877,8 +906,9 @@
   function estimate() {
     const f = readForm();
     const regions = f.regions.split(',').length;
-    let per = f.sports.length * 3 * regions;
-    if (f.props) per += f.sports.filter((k) => PROP_MARKETS[k]).length * f.propGames * 3 * regions;
+    const keys = chosenKeys();
+    let per = keys.length * 3 * regions;
+    if (f.props) per += keys.filter((k) => PROP_MARKETS[k]).length * f.propGames * 3 * regions;
     const perDay = Math.round(per * (16 * 60 / f.refresh)); // ~16 waking hours
     $('creditEst').textContent = `Longer day ranges scan more games and use more credits. ≈ ${per} credits per scan · ≈ ${perDay.toLocaleString()} per day at this refresh rate ` +
       `(free plan = 500/month — raise the refresh time or upgrade if that's too many). ESPN data is free and uses no credits.`;
@@ -901,13 +931,16 @@
     const names = Object.keys(groups).sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99) || a.localeCompare(b));
     $('sportList').innerHTML = names.map((g) => `
       <fieldset class="sg"><legend>${esc(g)} <button type="button" class="link" data-all="${esc(g)}">all</button> <button type="button" class="link" data-none="${esc(g)}">none</button></legend>
-        <div class="checks">${groups[g].sort((a, b) => a.title.localeCompare(b.title)).map((c) => {
+        <div class="checks">${groups[g].some((c) => c.active && !c.has_outrights) ? `<label class="allrow"><input type="checkbox" value="all:${esc(g)}" data-group="${esc(g)}" ${sel.has('all:' + g) ? 'checked' : ''}>
+          <span><b>All ${esc(g)}</b> <span class="note">every ${g === 'Tennis' ? 'tournament' : 'league'} with games, updated each scan</span>${state.mode !== 'odds' && groups[g].every((c) => !R.LEAGUES[c.key]) ? ' <span class="note">(needs key)</span>' : ''}</span></label>` : ''}
+        ${groups[g].sort((a, b) => a.title.localeCompare(b.title)).map((c) => {
           const off = c.has_outrights || !c.active;
-          const why = c.has_outrights ? ' <span class="note">(futures only)</span>' : !c.active ? ' <span class="note">(off-season)</span>' : '';
+          const why = c.has_outrights ? ' <span class="note">(futures only)</span>' : !c.active ? ' <span class="note">(off-season)</span>'
+            : state.mode !== 'odds' && !R.LEAGUES[c.key] ? ' <span class="note">(needs key)</span>' : '';
           return `<label title="${esc(c.key)}"><input type="checkbox" value="${esc(c.key)}" data-group="${esc(g)}" ${sel.has(c.key) && !off ? 'checked' : ''} ${off ? 'disabled' : ''}> ${esc(c.title)}${why}</label>`;
         }).join('')}</div></fieldset>`).join('');
     $('sportsNote').textContent = state.mode === 'espn'
-      ? 'Without a key, live odds cover the leagues ESPN posts lines for (NFL, NBA, NHL, MLB, college, WNBA, major soccer). Add a key in Settings for every sport here.'
+      ? 'Without a key, live odds cover the leagues ESPN posts lines for (NFL, NBA, NHL, MLB, college, WNBA, major soccer). Sports marked "needs key" (tennis, MMA, cricket and others) need a free Odds API key in Settings.'
       : state.mode === 'odds'
       ? 'This list comes live from the odds feed: every sport with betting lines right now.'
       : 'Demo mode only has sample games for NBA, NFL, NHL and EPL. Add your API key in Settings to load the full live list of every sport.';
@@ -916,7 +949,8 @@
   }
 
   function sportCount() {
-    const n = $('sportList').querySelectorAll('input:checked').length;
+    const n = [...$('sportList').querySelectorAll('input:checked')].reduce((a, i) =>
+      a + (i.value.startsWith('all:') ? state.catalog.filter((c) => c.group === i.value.slice(4) && c.active && !c.has_outrights).length : 1), 0);
     const regions = state.settings.regions.split(',').length;
     $('sportCount').textContent = `${n} selected · ≈ ${n * 3 * regions} odds credits per scan`;
   }

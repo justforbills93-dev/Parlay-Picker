@@ -33,6 +33,12 @@ The menu next to the goal box picks which games to scan: Today, Tomorrow, Today 
 range, so a game tomorrow makes the next night a back-to-back. Sportsbooks post some lines only a day or two ahead,
 so far-off days can have fewer games.
 
+## Tennis and other tours
+ESPN shows tennis matches but posts no tennis odds, so tennis (like MMA, boxing, cricket and other tours) needs a
+free Odds API key. Without one, the app says so instead of skipping it silently. In **Choose sports**, pick
+**All Tennis**: tennis is listed per tournament in the odds feed and those change every week, so "All Tennis"
+picks up whatever tournaments have lines at each scan. Most tennis has moneylines only.
+
 ## Parlay sizes
 Parlays mix moneylines, spreads, totals and player props (one pick per game). The **Mix** chips limit which types are used.
 The **Legs** chips (Best, 1–15) show the best parlay of exactly that size, and **Every parlay size** lists the best
