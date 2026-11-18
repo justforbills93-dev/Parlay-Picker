@@ -93,6 +93,8 @@
         icehockey_nhl: 'en/sports/ice-hockey-12/betting/usa-9/nhl-34', baseball_mlb: 'en/sports/baseball-23/betting/usa-9/mlb-75' },
       base: 'https://sports.betmgm.com/',
     },
+    // Fliff is a free-to-play social sportsbook that lives in its own app: no public odds feed, no betslip links.
+    fliff: { name: 'Fliff', home: 'https://getfliff.com/', league: {}, appOnly: true },
   };
   const bookUrl = (bk, sport) => {
     const b = BOOKS[bk];
@@ -620,11 +622,12 @@
       <ol class="placelist">${rows.map(({ l, q }) => `<li>
         <div><b>${esc(l.pick)}</b><div class="note">${esc(l.game)} · ${when(l.commence)}</div></div>
         <div class="o">${q ? odds(q.price) : '<span class="note">no price in feed</span>'}
-          <a class="bookbtn" href="${esc(q && q.link ? q.link : bookUrl(book, l.sport))}" target="_blank" rel="noopener">${q && q.link ? 'Add to slip' : 'Find it'}</a></div>
+          ${b.appOnly ? '' : `<a class="bookbtn" href="${esc(q && q.link ? q.link : bookUrl(book, l.sport))}" target="_blank" rel="noopener">${q && q.link ? 'Add to slip' : 'Find it'}</a>`}</div>
       </li>`).join('')}</ol>
-      <p class="note">${direct ? `"Add to slip" opens ${b.name} with that pick already in your betslip. ` : ''}${direct < legs.length ? `"Find it" opens the league page, where you tap the pick yourself. ` : ''}
+      ${b.appOnly ? `<p class="note"><b>${b.name} works inside its own app</b> and shares no odds or betslip links, so we can't show its prices. Open ${b.name}, find each game below and add the same pick. Its lines and payouts can differ from the books we scan, so check the odds it shows before you confirm. ${b.name} is a free-to-play social game, so check its terms for what you can win.</p>` : ''}
+      <p class="note">${b.appOnly ? '' : `${direct ? `"Add to slip" opens ${b.name} with that pick already in your betslip. ` : ''}${direct < legs.length ? `"Find it" opens the league page, where you tap the pick yourself. ` : ''}
         Add every leg, then choose <b>Parlay</b> in the betslip and enter your stake. Odds can move before you place it.
-        ${book === 'betmgm' ? ' BetMGM asks which state you\'re in the first time, then opens the right page.' : ''}</p>
+        ${book === 'betmgm' ? ' BetMGM asks which state you\'re in the first time, then opens the right page.' : ''}`}</p>
       <div class="row-end" style="justify-content:flex-start;flex-wrap:wrap">
         <a class="bookbtn big" href="${esc(bookUrl(book, legs[0] ? legs[0].sport : ''))}" target="_blank" rel="noopener">Open ${b.name}</a>
         <button type="button" id="copyPicks">Copy picks</button>

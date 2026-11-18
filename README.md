@@ -57,7 +57,7 @@ At the same payout, more legs almost always means a lower chance, because each l
   next to Find picks sets the total size (or "Best # of legs").
 
 ## Place this bet
-Every parlay (and My parlay) has **Place this bet** buttons for DraftKings, FanDuel and BetMGM. The panel shows each
+Every parlay (and My parlay) has **Place this bet** buttons for DraftKings, FanDuel, BetMGM and Fliff. The panel shows each
 leg's price at that book, the parlay's total there, and a link per leg:
 - **Add to slip** opens the book with that pick already in your betslip (DraftKings links come with the free ESPN
   feed; with an Odds API key, links for other books are included when the feed has them).
@@ -131,3 +131,8 @@ independent), landing near your payout target, ranked by chance of winning and v
 
 ## Tests
 `node --test engine.test.js`
+
+## Fliff
+Fliff is a free-to-play social sportsbook that lives in its own app. It publishes no odds feed or betslip links, so the
+app can't show Fliff's prices. Its **Place this bet** panel lists your picks and opens getfliff.com so you can add the same
+picks in the Fliff app. Fliff's lines can differ from the books we scan, so check the odds it shows.
