@@ -65,6 +65,12 @@ can't go in daily parlays. Game research covers the US leagues and the major soc
 - **Best single picks**: the biggest gaps between the fair chance and the best price at any book, with every book's odds side by side.
 - **Auto re-scan** on a timer (default 15 min) and when you come back to the tab. Only games that haven't started are used.
 
+## Credits used
+On the claude.ai page each live request goes through your Firecrawl connector and costs about 1 Firecrawl credit.
+The status bar shows **Firecrawl: N credits this visit · N today**. **Auto-scan: on/off** turns timed re-scans off,
+so the page only scans when you press Scan now. Opening `index.html` directly (not on claude.ai) fetches ESPN data
+without Firecrawl. Nothing is fetched while the tab is hidden.
+
 ## Game research
 On every scan (refreshed every 60 minutes by default) the app reads ESPN's public data for each game:
 - injury report for both teams (Out, Questionable, Day-To-Day, IR), with the injury type

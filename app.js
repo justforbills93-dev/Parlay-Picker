@@ -55,6 +55,7 @@
     apiKey: '', sports: ['americanfootball_nfl', 'basketball_nba', 'icehockey_nhl', 'americanfootball_ncaaf'],
     regions: 'us,us2', props: false, propGames: 3, refresh: 15, fmt: 'american',
     research: true, avoidUncertain: true, researchMin: 60, fatigue: true, avoidTired: false, window: '2',
+    autoScan: true,
   };
 
   const state = {
@@ -62,6 +63,7 @@
     remaining: null, error: null, filter: new Set(), selectedTier: null, scanning: false,
     research: {}, researchNote: '', catalog: loadCatalog(), loads: loadBox(),
     mode: '', demoReason: '', memo: new Map(),
+    fcSession: 0, fcToday: loadUsage(), fcDay: today(), relayOn: false,
     legCount: 0, openRow: 0, types: new Set(['ml', 'spread', 'total', 'prop']),
     slip: loadSlip(), lockSlip: false, slipOpen: false, legById: new Map(), byoQuery: '',
   };
@@ -179,8 +181,22 @@
     server_unavailable: 'Firecrawl didn\'t answer. Wait a minute and press Scan now.',
   };
 
+  // Firecrawl calls made by this page: this session, and today (kept in this browser).
+  function today() { return new Date().toLocaleDateString('en-CA'); }
+  function loadUsage() {
+    try { const u = JSON.parse(localStorage.getItem('pp-usage') || 'null'); if (u && u.day === today()) return u.n; } catch { /* ignore */ }
+    return 0;
+  }
+  function countCall() {
+    state.fcSession++;
+    state.fcToday = (state.fcDay === today() ? state.fcToday : 0) + 1;
+    state.fcDay = today();
+    try { localStorage.setItem('pp-usage', JSON.stringify({ day: state.fcDay, n: state.fcToday })); } catch { /* ignore */ }
+  }
+
   async function getViaRelay(mcp, url) {
     let result;
+    countCall();
     try {
       result = await mcp.callTool('Firecrawl', 'firecrawl_scrape', {
         url, formats: ['rawHtml'], maxAge: 0, storeInCache: false, proxy: 'basic',
@@ -201,7 +217,7 @@
 
   async function getJSON(url) {
     const mcp = await relay();
-    if (mcp) return getViaRelay(mcp, url);
+    if (mcp) { state.relayOn = true; return getViaRelay(mcp, url); }
     const res = await fetch(url);
     const rem = res.headers.get('x-requests-remaining');
     if (rem != null) state.remaining = Number(rem);
@@ -838,9 +854,14 @@
     const books = new Set(state.legs.flatMap((l) => l.quotes.map((q) => q.book))).size;
     const mins = Math.max(0, Math.round((state.nextScan - Date.now()) / 60000));
     $('scanInfo').textContent = `${games} games · ${books} books · ${state.legs.length} picks · ` +
-      `scanned ${state.lastScan.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · next in ${mins}m` +
+      `scanned ${state.lastScan.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ` +
+      (state.settings.autoScan ? `next in ${mins}m` : 'auto-scan off') +
       (state.researchNote ? ` · ${state.researchNote}` : '') +
-      (state.remaining != null ? ` · ${state.remaining} credits left` : '');
+      (state.remaining != null ? ` · ${state.remaining} Odds API credits left` : '');
+    $('usage').hidden = !state.relayOn;
+    $('usage').textContent = `Firecrawl: ${state.fcSession} credit${state.fcSession === 1 ? '' : 's'} this visit · ${state.fcToday} today`;
+    $('saverBtn').textContent = state.settings.autoScan ? 'Auto-scan: on' : 'Auto-scan: off';
+    $('saverBtn').setAttribute('aria-pressed', String(!state.settings.autoScan));
   }
 
   function renderAll() {
@@ -1050,13 +1071,21 @@
   });
 
   // Real-time loop: re-scan on schedule, and immediately when the tab comes back.
+  $('saverBtn').addEventListener('click', () => {
+    state.settings.autoScan = !state.settings.autoScan;
+    save();
+    if (state.settings.autoScan) state.nextScan = Date.now() + Math.max(2, state.settings.refresh) * 60000;
+    updateClock();
+  });
+
   setInterval(() => {
+    if (!state.settings.autoScan) return updateClock(); // credit saver: only scan when asked
     if (document.hidden && live()) return; // don't spend API credits on a hidden tab
     if (state.nextScan && Date.now() >= state.nextScan) scan();
     else updateClock();
   }, 15000);
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && state.nextScan && Date.now() >= state.nextScan) scan();
+    if (state.settings.autoScan && !document.hidden && state.nextScan && Date.now() >= state.nextScan) scan();
   });
 
   scan();
