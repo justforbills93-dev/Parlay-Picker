@@ -28,6 +28,23 @@ Settings shows roughly how many credits each scan uses. Raise the re-scan time t
 - **Best single picks**: the biggest gaps between the fair chance and the best price at any book, with every book's odds side by side.
 - **Auto re-scan** on a timer (default 15 min) and when you come back to the tab. Only games that haven't started are used.
 
+## Game research
+On every scan (refreshed every 60 minutes by default) the app reads ESPN's public data for each game:
+- injury report for both teams (Out, Questionable, Day-To-Day, IR), with the injury type
+- key players (team leaders) and whether each one is active or hurt
+- last 5 results, overall, home and away records
+- this season's head-to-head (soccer also lists older meetings)
+- ESPN's stats-based matchup predictor
+
+How it changes the picks:
+- Moneyline chances blend the market (80%) with ESPN's model (20%).
+- Player props on anyone listed Out, Doubtful, Questionable or Day-To-Day are left out of parlays.
+- "Skip games where a star player is questionable or out" (on by default) keeps those games out of parlays.
+
+Not covered: confirmed starting lineups and coach-vs-coach records aren't in the free feeds, so key-player
+injury status is the lineup check. Older head-to-head (previous seasons) isn't pulled for US leagues because
+each team's full-season schedule is about 1.6 MB per request.
+
 ## How picks are chosen
 Betting markets already price in team and player stats, history, injuries and sharp money, which makes
 them the most accurate public predictor. For every outcome the engine (`engine.js`):

@@ -42,3 +42,29 @@ test('goal parsing', () => {
   assert.strictEqual(E.parseGoal('turn $5 into 1k').target, 1000);
   assert.strictEqual(E.parseGoal('safest bet for $25').risk, 1);
 });
+
+const R = require('./research.js');
+
+test('research: match game, read injuries/predictor, block injured props', () => {
+  const sb = { events: [{ id: '9', date: '2026-11-19T00:00Z', status: { type: { state: 'pre' } }, competitions: [{ competitors: [
+    { homeAway: 'home', team: { id: '5', displayName: 'Cleveland Cavaliers', abbreviation: 'CLE' }, records: [{ name: 'overall', summary: '8-7' }],
+      leaders: [{ name: 'pointsPerGame', shortDisplayName: 'PPG', leaders: [{ displayValue: '24.1', athlete: { displayName: 'Donovan Mitchell' } }] }] },
+    { homeAway: 'away', team: { id: '29', displayName: 'Memphis Grizzlies', abbreviation: 'MEM' }, records: [] }] }] }] };
+  const games = R.parseScoreboard(sb);
+  const g = R.matchGame({ commence_time: '2026-11-19T00:00:00Z', home_team: 'Cleveland Cavaliers', away_team: 'Memphis Grizzlies' }, games);
+  assert.strictEqual(g.espnId, '9');
+  const r = R.parseSummary({
+    injuries: [{ team: { id: '5' }, injuries: [{ athlete: { displayName: 'Donovan Mitchell' }, status: 'Questionable' }] },
+      { team: { id: '29' }, injuries: [{ athlete: { displayName: 'Ty Jerome' }, status: 'Out', details: { type: 'Hip' } }] }],
+    predictor: { homeTeam: { id: '5', gameProjection: '71' }, awayTeam: { id: '29', gameProjection: '29' } },
+  }, g);
+  assert.ok(Math.abs(r.predictor.home - 0.71) < 1e-9);
+  const legs = R.applyResearch([
+    { eventId: 'e', game: 'Memphis Grizzlies @ Cleveland Cavaliers', pick: 'Cleveland Cavaliers to win', market: 'h2h', prob: 0.6, price: 1.6, isProp: false },
+    { eventId: 'e', game: 'Memphis Grizzlies @ Cleveland Cavaliers', pick: 'Ty Jerome Over 14.5 points', market: 'player_points', prob: 0.5, price: 1.9, isProp: true },
+  ], { e: r });
+  assert.ok(Math.abs(legs[0].prob - (0.8 * 0.6 + 0.2 * 0.71)) < 1e-9);
+  assert.ok(legs[0].starQuestionable);
+  assert.ok(legs[1].blocked);
+  assert.strictEqual(E.findParlays(legs, 1.9, { avoidUncertain: true }).length, 0);
+});

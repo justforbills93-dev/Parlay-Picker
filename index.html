@@ -104,6 +104,23 @@
   @media (max-width: 640px) { .hide-sm { display: none; } }
 
   .note { font-size: 13.5px; color: var(--muted); }
+  .rn { margin-top: 2px; }
+  .research { display: grid; gap: 10px; }
+  details.game summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; list-style: none; }
+  details.game summary::-webkit-details-marker { display: none; }
+  details.game summary::before { content: '▸'; color: var(--muted); }
+  details.game[open] summary::before { content: '▾'; }
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 14px 0 10px; }
+  @media (max-width: 640px) { .teams { grid-template-columns: 1fr; } }
+  .team { min-width: 0; }
+  .team .tn { font-weight: 700; }
+  .team ul { margin: 2px 0 0; padding-left: 18px; font-size: 14px; }
+  .team .lbl { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-top: 10px; font-weight: 700; }
+  .form { display: flex; gap: 4px; margin-top: 6px; }
+  .form i { font-style: normal; font-size: 12px; font-weight: 700; width: 22px; height: 22px; border-radius: 6px;
+    display: grid; place-items: center; background: var(--chip); color: var(--muted); }
+  .form i.w { background: var(--live-bg); color: var(--live-ink); }
+  .form i.l { background: var(--err-bg); color: var(--err-ink); }
   .note b { color: var(--ink); }
   details.how summary { cursor: pointer; font-weight: 700; }
   .warnbox { border-left: 4px solid var(--warn); }
@@ -173,6 +190,10 @@
     </table>
   </div>
 
+  <h2>Game research</h2>
+  <p class="sub">Injury reports, key players, last 5 results, head-to-head and ESPN's matchup model for every game we scanned. Tap a game.</p>
+  <div id="research" class="research"></div>
+
   <h2>How it works</h2>
   <div class="card note">
     <details class="how" open>
@@ -182,6 +203,11 @@
       <p><b>2. Find the real chance.</b> Each book adds a hidden fee (the "vig") to its odds. We strip it out and average all books
         (sharp books like Pinnacle count extra). Betting markets already bake in team stats, player history, injuries and
         where the smart money is going — that's why they're the most accurate public predictor of games.</p>
+      <p><b>Research check.</b> For every game we pull ESPN's injury report, each team's key players and whether they're playing,
+        last 5 results, home/away records, this season's head-to-head, and ESPN's own stats-based matchup model. ESPN's model gets
+        a 20% say in moneyline chances. Player props on anyone listed out or questionable are skipped, and you can skip
+        games where a star is questionable. Starting lineups and coach-vs-coach records aren't in the free data feeds,
+        so key-player injury status is the lineup check.</p>
       <p><b>3. Shop the line.</b> For every pick we show the book paying the most. Getting +110 instead of -105 adds up fast in a parlay.</p>
       <p><b>4. Build your parlay.</b> We search thousands of combinations (one pick per game, so picks don't depend on each other)
         to hit your payout goal with the highest chance of winning.</p>
@@ -218,6 +244,11 @@
     <label for="refresh">Auto re-scan every (minutes)</label>
     <input type="number" id="refresh" min="2" max="240" value="15">
 
+    <label><input type="checkbox" id="researchOn"> Game research: injuries, key players, form, head-to-head, ESPN model</label>
+    <label><input type="checkbox" id="avoidUncertain"> Skip games where a star player is questionable or out</label>
+    <label for="researchMin">Refresh research every (minutes)</label>
+    <input type="number" id="researchMin" min="10" max="720" value="60">
+
     <label for="fmt">Odds format</label>
     <select id="fmt"><option value="american">American (+150 / -120)</option><option value="decimal">Decimal (2.50)</option></select>
 
@@ -231,6 +262,7 @@
 
 <script src="engine.js"></script>
 <script src="demo.js"></script>
+<script src="research.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

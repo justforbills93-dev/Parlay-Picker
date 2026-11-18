@@ -170,6 +170,7 @@
       .filter((l) => l.prob >= 0.05 && l.prob <= 0.97 && l.price > 1.04)
       .filter((l) => !o.sports || o.sports.has(l.sport))
       .filter((l) => o.props !== false || !l.isProp)
+      .filter((l) => !l.blocked && !(o.avoidUncertain && (l.starOut || l.starQuestionable)))
       .sort((a, b) => b.ev - a.ev)
       .slice(0, o.poolSize ?? 150)
       .map((l, idx) => ({ l, idx, lp: Math.log(l.price), lq: Math.log(l.prob) }));

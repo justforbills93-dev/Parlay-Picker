@@ -152,5 +152,42 @@
     return events;
   }
 
-  return { generate, BOOKS };
+  // Sample research for demo games (made up, like the odds).
+  const INJ = ['Ankle', 'Knee', 'Hamstring', 'Illness', 'Back', 'Wrist'];
+  const STATUS = ['Out', 'Questionable', 'Day-To-Day', 'Out', 'Probable'];
+  function generateResearch(events, now = new Date()) {
+    const r = rng(Math.floor(now.getTime() / 86400000) * 17 + 3);
+    const out = {};
+    for (const ev of events) {
+      const players = [...new Set(ev.bookmakers[0].markets.flatMap((m) => m.outcomes.map((o) => o.description).filter(Boolean)))];
+      const h2h = ev.bookmakers.find((b) => b.key === 'pinnacle')?.markets.find((m) => m.key === 'h2h');
+      const fair = h2h ? (1 / h2h.outcomes[0].price) / h2h.outcomes.reduce((a, o) => a + 1 / o.price, 0) : 0.5;
+      const side = (name, mine) => {
+        const w = 2 + Math.floor(r() * 10), l = 2 + Math.floor(r() * 10);
+        const leaders = mine.slice(0, 2).map((n, i) => ({ stat: i ? 'RPG' : 'PPG', name: n, value: (i ? 6 + r() * 6 : 18 + r() * 10).toFixed(1) }));
+        const injuries = [];
+        const k = Math.floor(r() * 3);
+        for (let i = 0; i < k; i++) {
+          injuries.push({ name: FIRST[Math.floor(r() * FIRST.length)] + ' ' + LAST[Math.floor(r() * LAST.length)], pos: 'G', status: STATUS[Math.floor(r() * STATUS.length)], detail: INJ[Math.floor(r() * INJ.length)], returns: '' });
+        }
+        if (mine.length && r() < 0.25) injuries.push({ name: mine[0], pos: 'F', status: r() < 0.5 ? 'Questionable' : 'Out', detail: INJ[Math.floor(r() * INJ.length)], returns: '' });
+        return {
+          id: name, name, abbr: name.slice(0, 3).toUpperCase(), record: `${w}-${l}`,
+          homeRecord: `${Math.ceil(w / 2)}-${Math.floor(l / 2)}`, awayRecord: `${Math.floor(w / 2)}-${Math.ceil(l / 2)}`,
+          leaders, injuries,
+          form: [0, 1, 2, 3, 4].map(() => ({ result: r() < 0.5 ? 'W' : 'L', score: '', opp: '', atVs: '' })),
+        };
+      };
+      const half = Math.ceil(players.length / 2);
+      const ph = Math.min(0.95, Math.max(0.05, fair + (r() - 0.5) * 0.12));
+      out[ev.id] = {
+        espnId: 'demo', home: side(ev.home_team, players.slice(0, half)), away: side(ev.away_team, players.slice(half)),
+        h2h: { summary: r() < 0.5 ? 'Series tied 1-1' : 'First meeting this season', games: [] }, older: [],
+        predictor: ev.sport_key.startsWith('soccer') ? null : { home: ph, away: 1 - ph }, updated: Date.now(),
+      };
+    }
+    return out;
+  }
+
+  return { generate, generateResearch, BOOKS };
 });
