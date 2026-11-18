@@ -4,30 +4,41 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Parlay Picker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <style>
   :root {
     --bg: #f6f7fb; --card: #ffffff; --ink: #14161f; --muted: #646b7d; --line: #e3e6ee;
     --brand: #4f46e5; --brand-ink: #ffffff; --good: #16a34a; --bad: #dc2626; --warn: #ca8a04;
     --chip: #eef0f7; --shadow: 0 1px 2px rgba(20,22,31,.06), 0 4px 16px rgba(20,22,31,.05);
+    --live-bg: #dcfce7; --live-ink: #166534; --demo-bg: #fef3c7; --demo-ink: #92400e; --err-bg: #fee2e2; --err-ink: #991b1b;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #0f1117; --card: #181b24; --ink: #eef0f6; --muted: #9aa1b3; --line: #2a2f3d;
       --brand: #818cf8; --brand-ink: #0f1117; --chip: #232736; --shadow: none;
+      --live-bg: #14532d; --live-ink: #bbf7d0; --demo-bg: #713f12; --demo-ink: #fef3c7; --err-bg: #7f1d1d; --err-ink: #fee2e2;
+      color-scheme: dark;
     }
+  }
+  :root[data-theme="dark"] {
+      --bg: #0f1117; --card: #181b24; --ink: #eef0f6; --muted: #9aa1b3; --line: #2a2f3d;
+      --brand: #818cf8; --brand-ink: #0f1117; --chip: #232736; --shadow: none;
+      --live-bg: #14532d; --live-ink: #bbf7d0; --demo-bg: #713f12; --demo-ink: #fef3c7; --err-bg: #7f1d1d; --err-ink: #fee2e2;
+      color-scheme: dark;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
     font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  .wrap { max-width: 980px; margin: 0 auto; padding: 0 16px 64px; }
+  .wrap { max-width: 980px; margin: 0 auto; padding-block: 0 64px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   header { display: flex; align-items: center; gap: 12px; padding: 18px 0; flex-wrap: wrap; }
   .logo { font-weight: 800; font-size: 22px; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; }
   .logo span { background: var(--brand); color: var(--brand-ink); border-radius: 8px; padding: 2px 8px; font-size: 14px; }
   .status { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
   .pill { border-radius: 999px; padding: 3px 10px; font-weight: 600; font-size: 12px; background: var(--chip); color: var(--ink); }
-  .pill.live { background: #dcfce7; color: #166534; }
-  .pill.demo { background: #fef3c7; color: #92400e; }
-  .pill.err { background: #fee2e2; color: #991b1b; }
+  .pill.live { background: var(--live-bg); color: var(--live-ink); }
+  .pill.demo { background: var(--demo-bg); color: var(--demo-ink); }
+  .pill.err { background: var(--err-bg); color: var(--err-ink); }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; display: inline-block; margin-right: 5px; }
   .live .dot { animation: pulse 1.6s infinite; }
   @keyframes pulse { 50% { opacity: .3; } }
@@ -89,7 +100,7 @@
   tr.row:hover td { background: var(--chip); }
   .books { display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 6px; }
   .books span { background: var(--chip); border-radius: 8px; padding: 3px 8px; font-size: 12.5px; }
-  .books span.best { background: #dcfce7; color: #166534; font-weight: 700; }
+  .books span.best { background: var(--live-bg); color: var(--live-ink); font-weight: 700; }
   @media (max-width: 640px) { .hide-sm { display: none; } }
 
   .note { font-size: 13.5px; color: var(--muted); }
@@ -99,6 +110,7 @@
   dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--ink);
     max-width: 520px; width: calc(100% - 32px); padding: 20px; }
   dialog::backdrop { background: rgba(0,0,0,.45); }
+  .warnbox { border-left-color: var(--warn); }
   dialog label { display: block; margin: 12px 0 4px; font-weight: 600; font-size: 14px; }
   dialog input[type=text], dialog input[type=number], dialog select { width: 100%; font: inherit; padding: 8px 10px;
     border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
