@@ -189,6 +189,14 @@
     <p class="sub" style="margin:0">Type it like you'd say it. We'll find the parlay with the best chance of getting you there.</p>
     <form class="ask" id="askForm">
       <input id="ask" value="I want to turn $10 into $100" aria-label="Your goal" autocomplete="off">
+      <select id="daySelect" aria-label="Which days">
+        <option value="today">Today</option>
+        <option value="tomorrow">Tomorrow</option>
+        <option value="2">Today &amp; tomorrow</option>
+        <option value="3">Next 3 days</option>
+        <option value="5">Next 5 days</option>
+        <option value="7">Next 7 days</option>
+      </select>
       <select id="legSelect" aria-label="Number of legs">
         <option value="0">Best # of legs</option>
         <option value="1">1 leg</option><option value="2">2 legs</option><option value="3">3 legs</option><option value="4">4 legs</option>

@@ -39,12 +39,22 @@
     baseball_mlb: 'batter_hits,pitcher_strikeouts',
   };
   const API = 'https://api.the-odds-api.com/v4';
-  const HOURS_AHEAD = 36;
+  const WINDOWS = { today: 'Today', tomorrow: 'Tomorrow', 2: 'Today & tomorrow', 3: 'Next 3 days', 5: 'Next 5 days', 7: 'Next 7 days' };
+
+  // Which games to scan: from/to times for the chosen day range (local days).
+  function gameWindow(now = new Date()) {
+    const w = String(state.settings.window || '2');
+    const dayEnd = (offset) => { const d = new Date(now); d.setDate(d.getDate() + offset); d.setHours(23, 59, 59, 0); return d; };
+    if (w === 'today') return { from: now, to: dayEnd(0) };
+    if (w === 'tomorrow') { const f = dayEnd(0); f.setTime(f.getTime() + 1000); return { from: f, to: dayEnd(1) }; }
+    return { from: now, to: dayEnd(Math.max(1, Number(w) || 2) - 1) };
+  }
+  const windowLabel = () => (WINDOWS[state.settings.window] || WINDOWS[2]).toLowerCase();
 
   const DEFAULTS = {
     apiKey: '', sports: ['americanfootball_nfl', 'basketball_nba', 'icehockey_nhl', 'americanfootball_ncaaf'],
     regions: 'us,us2', props: false, propGames: 3, refresh: 15, fmt: 'american',
-    research: true, avoidUncertain: true, researchMin: 60, fatigue: true, avoidTired: false,
+    research: true, avoidUncertain: true, researchMin: 60, fatigue: true, avoidTired: false, window: '2',
   };
 
   const state = {
@@ -179,8 +189,7 @@
   async function scanLive() {
     const s = state.settings;
     const key = encodeURIComponent(s.apiKey.trim());
-    const now = new Date();
-    const to = new Date(now.getTime() + HOURS_AHEAD * 3600000);
+    const { from: now, to } = gameWindow();
 
     // Free call: which sports are in season right now.
     const all = await getJSON(`${API}/sports?apiKey=${key}`);
@@ -243,7 +252,8 @@
       const evs = events.filter((e) => e.sport_key === sport);
       const stale = evs.filter((e) => !state.research[e.id] || now - state.research[e.id].updated > maxAge);
       if (!stale.length) { matched += evs.length; continue; }
-      const boards = await pool(R.scoreboardUrls(sport), 2, (u) => memoJSON(u, 5 * 60000));
+      const { from, to } = gameWindow();
+      const boards = await pool(R.scoreboardUrls(sport, from, to), 2, (u) => memoJSON(u, 5 * 60000));
       const games = boards.filter(Boolean).flatMap((b) => R.parseScoreboard(b));
       const jobs = stale.map((e) => ({ e, g: R.matchGame(e, games) })).filter((j) => j.g);
       matched += evs.length - stale.length;
@@ -260,12 +270,24 @@
     state.researchNote = `research on ${matched}/${events.length - unsupported} games` + (failed ? ` (${failed} failed)` : '');
   }
 
+  // Fatigue counts finished games plus any games the team plays before this one
+  // inside the scanned days (e.g. a game tomorrow makes the next day a back-to-back).
   function addFatigue(events) {
+    const withSchedule = (side, e) => {
+      const t = new Date(e.commence_time).getTime();
+      const extra = events.filter((x) => x.sport_key === e.sport_key && x.id !== e.id && new Date(x.commence_time).getTime() < t &&
+        (R.sameTeam(x.home_team, side.name) || R.sameTeam(x.away_team, side.name)))
+        .map((x) => ({ result: '', score: '', opp: '', atVs: R.sameTeam(x.away_team, side.name) ? '@' : 'vs', date: x.commence_time, id: '' }));
+      const seen = new Set(side.form.map((f) => (f.date || '').slice(0, 10)));
+      const form = side.form.concat(extra.filter((f) => !seen.has(f.date.slice(0, 10))))
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      return { ...side, form };
+    };
     for (const e of events) {
       const r = state.research[e.id];
       if (!r) continue;
-      r.home.fatigue = state.settings.fatigue ? R.teamFatigue(r.home, e.commence_time, e.sport_key, false) : null;
-      r.away.fatigue = state.settings.fatigue ? R.teamFatigue(r.away, e.commence_time, e.sport_key, true) : null;
+      r.home.fatigue = state.settings.fatigue ? R.teamFatigue(withSchedule(r.home, e), e.commence_time, e.sport_key, false) : null;
+      r.away.fatigue = state.settings.fatigue ? R.teamFatigue(withSchedule(r.away, e), e.commence_time, e.sport_key, true) : null;
       if (!state.settings.fatigue) { r.home.load = null; r.away.load = null; }
     }
   }
@@ -309,18 +331,20 @@
   }
 
   async function scanEspn() {
-    const now = new Date();
+    const win = gameWindow();
     const keys = state.settings.sports.filter((k) => R.LEAGUES[k]);
     if (!keys.length) throw new Error('none of your chosen sports have free live odds. Add an Odds API key in Settings for those.');
     let firstErr = null, ok = 0;
     const lists = await pool(keys, 4, async (k) => {
-      const boards = await Promise.all(R.scoreboardUrls(k, now, HOURS_AHEAD).map((u) =>
+      const boards = await Promise.all(R.scoreboardUrls(k, win.from, win.to).map((u) =>
         memoJSON(u, 60000).then((b) => { ok++; return b; }).catch((e) => { firstErr = firstErr || e; return null; })));
       return boards.filter(Boolean).flatMap((b) => R.oddsFromScoreboard(b, k));
     });
     if (!ok && firstErr) throw firstErr;
-    const until = now.getTime() + HOURS_AHEAD * 3600000;
-    const events = lists.filter(Boolean).flat().filter((e) => new Date(e.commence_time).getTime() <= until);
+    const events = lists.filter(Boolean).flat().filter((e) => {
+      const t = new Date(e.commence_time).getTime();
+      return t >= win.from.getTime() && t <= win.to.getTime();
+    });
     const seen = new Set();
     return events.filter((e) => !seen.has(e.id) && seen.add(e.id));
   }
@@ -339,12 +363,13 @@
       } else {
         try {
           events = await scanEspn();
-          if (!events.length) throw new Error('no upcoming games with posted lines in the next 36 hours for your sports.');
+          if (!events.length) throw new Error(`no games with posted lines ${windowLabel()} for your sports. Try a longer day range or more sports.`);
           state.mode = 'espn';
         } catch (e) {
           state.mode = 'demo';
           state.demoReason = e.message || String(e);
-          events = window.ParlayDemo.generate(new Date(), state.scans).filter((e) => state.settings.sports.includes(e.sport_key) || !state.settings.sports.some((k) => DEMO_SPORTS.has(k)));
+          const win = gameWindow();
+          events = window.ParlayDemo.generate(win.from, state.scans, Math.max(6, (win.to - win.from) / 3600000)).filter((e) => state.settings.sports.includes(e.sport_key) || !state.settings.sports.some((k) => DEMO_SPORTS.has(k)));
         }
       }
       const now = Date.now();
@@ -423,7 +448,7 @@
   function renderGoal() {
     const box = $('results'), ans = $('answer');
     if (!state.legs.length) {
-      ans.innerHTML = state.error ? '' : '<span class="note">No upcoming games found in the next 36 hours for your sports.</span>';
+      ans.innerHTML = state.error ? '' : `<span class="note">No games found ${esc(windowLabel())} for your sports. Try a longer day range or more sports.</span>`;
       box.innerHTML = '';
       return;
     }
@@ -798,7 +823,7 @@
     if (f.props) per += f.sports.filter((k) => PROP_MARKETS[k]).length * f.propGames * 3 * regions;
     const calls = 1 + f.sports.length + (f.props ? f.sports.filter((k) => PROP_MARKETS[k]).length * f.propGames : 0);
     const perDay = Math.round(per * (16 * 60 / f.refresh)); // ~16 waking hours
-    $('creditEst').textContent = `≈ ${per} credits per scan · ≈ ${perDay.toLocaleString()} per day at this refresh rate ` +
+    $('creditEst').textContent = `Longer day ranges scan more games and use more credits. ≈ ${per} credits per scan · ≈ ${perDay.toLocaleString()} per day at this refresh rate ` +
       `(free plan = 500/month — raise the refresh time or upgrade if that's too many).` +
       (window.claude ? ` On this claude.ai page each scan also uses about ${calls} Firecrawl credits` +
         (f.research ? `, plus about 1 per game (and 2 per sport) when research refreshes every ${f.researchMin} min` +
@@ -894,6 +919,13 @@
   }, true);
   $('byoSearch').addEventListener('input', (e) => { state.byoQuery = e.target.value; renderByo(); });
   $('legSelect').addEventListener('change', (e) => { state.legCount = Number(e.target.value); renderGoal(); });
+  $('daySelect').value = String(state.settings.window || '2');
+  $('daySelect').addEventListener('change', (e) => {
+    state.settings.window = e.target.value;
+    save();
+    state.memo.clear();
+    scan();
+  });
   $('results').addEventListener('click', (e) => {
     const lc = e.target.closest('[data-legs]');
     if (lc) { state.legCount = Number(lc.dataset.legs); renderGoal(); return; }

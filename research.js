@@ -71,11 +71,14 @@
     return s.replace(/-/g, '');
   }
 
-  function scoreboardUrls(sportKey, now = new Date(), hoursAhead = 36) {
+  // One scoreboard per (US-Eastern) day between `from` and `to`.
+  function scoreboardUrls(sportKey, from = new Date(), to = new Date(Date.now() + 36 * 3600000)) {
     const L = LEAGUES[sportKey];
     if (!L) return [];
-    const days = new Set([etDate(now), etDate(now.getTime() + hoursAhead * 3600000)]);
-    return [...days].map((d) => `${BASE}${L.path}/scoreboard?dates=${d}${L.q || ''}`);
+    const days = new Set();
+    for (let t = new Date(from).getTime(); t <= new Date(to).getTime() + 3600000; t += 6 * 3600000) days.add(etDate(t));
+    days.add(etDate(to));
+    return [...days].sort().map((d) => `${BASE}${L.path}/scoreboard?dates=${d}${L.q || ''}`);
   }
 
   function summaryUrl(sportKey, espnId) {

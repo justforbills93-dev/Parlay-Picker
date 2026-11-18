@@ -86,7 +86,7 @@
     return noisy.map((p) => roundAmerican(1 / ((p / s) * (1 + vig))));
   }
 
-  function generate(now = new Date(), scan = 0) {
+  function generate(now = new Date(), scan = 0, hours = 30) {
     const day = Math.floor(now.getTime() / 86400000);
     const r = rng(day * 7919);
     const drift = rng(day * 31 + scan * 101);
@@ -97,7 +97,7 @@
       const teams = s.teams.slice().sort(() => r() - 0.5);
       for (let i = 0; i + 1 < teams.length; i += 2) {
         const home = teams[i], away = teams[i + 1];
-        const start = new Date(now.getTime() + (1 + Math.floor(r() * 30)) * 3600000);
+        const start = new Date(now.getTime() + (1 + Math.floor(r() * Math.max(2, hours - 1))) * 3600000);
         start.setMinutes([0, 30, 0, 15][i % 4], 0, 0);
         const pHome = 0.25 + r() * 0.5;
         const pDraw = s.threeWay ? 0.22 + r() * 0.06 : 0;

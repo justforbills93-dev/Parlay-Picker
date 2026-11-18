@@ -23,6 +23,12 @@ travels inside that request URL to Firecrawl. Opened as a normal file or website
 BetRivers, Fanatics, ESPN BET, Bovada, BetOnline, Pinnacle and more, depending on the region you pick.
 Settings shows roughly how many credits each scan uses. Raise the re-scan time to stay inside the free plan.
 
+## Days
+The menu next to the goal box picks which games to scan: Today, Tomorrow, Today & tomorrow, or the next 3, 5 or
+7 days. Longer ranges scan more games and use more credits. Fatigue also counts games a team plays earlier in the
+range, so a game tomorrow makes the next night a back-to-back. Sportsbooks post some lines only a day or two ahead,
+so far-off days can have fewer games.
+
 ## Parlay sizes
 Parlays mix moneylines, spreads, totals and player props (one pick per game). The **Mix** chips limit which types are used.
 The **Legs** chips (Best, 1–15) show the best parlay of exactly that size, and **Every parlay size** lists the best
