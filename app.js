@@ -405,7 +405,7 @@
         state.mode = 'espn';
         state.keyNote = keyErr ? `Your Odds API key didn't work (${keyErr}), so this scan used the free DraftKings feed.` : '';
       } else state.keyNote = '';
-      if (!events.length) throw new Error(`No games with posted lines ${windowLabel()} for your sports. Try a longer day range or more sports.`);
+      if (!events.length) throw new Error(`No games with posted lines ${windowLabel()} for ${keysChecked()}. Try a longer day range or more sports.`);
       const now = Date.now();
       const evs = events.filter((e) => new Date(e.commence_time).getTime() > now); // pre-game only
       if (!evs.length) throw new Error(`Every game in ${windowLabel()} has already started. Try a longer day range.`);
@@ -443,6 +443,7 @@
   }
   // Free ESPN data refreshes every minute. With an Odds API key the timer follows
   // Settings so the free 500 credits/month last.
+  const keysChecked = () => { const k = chosenKeys().map(sportName); return k.length ? k.join(', ') : 'your chosen sports'; };
   const refreshMs = () => (state.mode === 'odds' ? Math.max(2, state.settings.refresh) : 1) * 60000;
 
 
@@ -951,7 +952,7 @@
     const keyLink = 'get a free key at <a href="https://the-odds-api.com/" target="_blank" rel="noopener">the-odds-api.com</a> and paste it in <a href="#" id="openSet2">Settings</a>';
     if (state.error) {
       n.innerHTML = `<b>${have ? 'Couldn\'t refresh, showing the last good scan.' : 'Couldn\'t load odds.'}</b> ${esc(state.error)} ` +
-        `Retrying automatically. <a href="#" id="openSet2">Open Settings</a>`;
+        `Retrying automatically. <a href="#" id="openSet2">Open Settings</a> · <a href="#" id="resetSet">Reset my settings to defaults</a>`;
     } else if (state.mode === 'espn') {
       const need = keyNeededGroups();
       n.innerHTML = `<b>Live:</b> real games with DraftKings lines, refreshed every minute. ` +
@@ -1234,4 +1235,10 @@
   });
 
   scan();
+  document.addEventListener('click', (e) => {
+    if (e.target.id !== 'resetSet') return;
+    e.preventDefault();
+    try { localStorage.removeItem('pp-settings'); } catch { /* ignore */ }
+    location.reload();
+  });
 })();
