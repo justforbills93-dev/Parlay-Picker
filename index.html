@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parlay Picker</title>
+<style>
+  :root {
+    --bg: #f6f7fb; --card: #ffffff; --ink: #14161f; --muted: #646b7d; --line: #e3e6ee;
+    --brand: #4f46e5; --brand-ink: #ffffff; --good: #16a34a; --bad: #dc2626; --warn: #ca8a04;
+    --chip: #eef0f7; --shadow: 0 1px 2px rgba(20,22,31,.06), 0 4px 16px rgba(20,22,31,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1117; --card: #181b24; --ink: #eef0f6; --muted: #9aa1b3; --line: #2a2f3d;
+      --brand: #818cf8; --brand-ink: #0f1117; --chip: #232736; --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 16px 64px; }
+  header { display: flex; align-items: center; gap: 12px; padding: 18px 0; flex-wrap: wrap; }
+  .logo { font-weight: 800; font-size: 22px; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; }
+  .logo span { background: var(--brand); color: var(--brand-ink); border-radius: 8px; padding: 2px 8px; font-size: 14px; }
+  .status { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .pill { border-radius: 999px; padding: 3px 10px; font-weight: 600; font-size: 12px; background: var(--chip); color: var(--ink); }
+  .pill.live { background: #dcfce7; color: #166534; }
+  .pill.demo { background: #fef3c7; color: #92400e; }
+  .pill.err { background: #fee2e2; color: #991b1b; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; display: inline-block; margin-right: 5px; }
+  .live .dot { animation: pulse 1.6s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    border-radius: 10px; padding: 8px 14px; }
+  button.primary { background: var(--brand); color: var(--brand-ink); border-color: transparent; font-weight: 700; }
+  button:disabled { opacity: .6; cursor: wait; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: var(--shadow); }
+  h2 { font-size: 19px; margin: 36px 0 4px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 14px; font-size: 14px; }
+
+  .hero { padding: 22px; }
+  .hero h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -.02em; }
+  .ask { display: flex; gap: 8px; margin-top: 14px; }
+  .ask input { flex: 1; min-width: 0; font: inherit; font-size: 18px; padding: 12px 14px; border-radius: 12px;
+    border: 2px solid var(--line); background: var(--bg); color: var(--ink); }
+  .ask input:focus { outline: none; border-color: var(--brand); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .chip { background: var(--chip); border: 0; border-radius: 999px; padding: 6px 12px; font-size: 14px; }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; align-items: center; font-size: 14px; color: var(--muted); }
+  .chip.on { background: var(--brand); color: var(--brand-ink); }
+
+  .answer { margin-top: 16px; font-size: 15px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .parlay { display: flex; flex-direction: column; gap: 10px; }
+  .parlay .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .payout { font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
+  .payout small { font-size: 14px; color: var(--muted); font-weight: 500; }
+  .tag { font-size: 12px; font-weight: 700; border-radius: 6px; padding: 2px 8px; color: #fff; white-space: nowrap; }
+  .odds-line { font-size: 14px; color: var(--muted); }
+  .meter { height: 8px; border-radius: 99px; background: var(--chip); overflow: hidden; }
+  .meter i { display: block; height: 100%; border-radius: 99px; }
+  .chance { font-size: 15px; }
+  .chance b { font-size: 17px; }
+  .legs { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .legs li { padding: 9px 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 10px; }
+  .legs .p { font-weight: 600; font-size: 15px; }
+  .legs .g { font-size: 12.5px; color: var(--muted); }
+  .legs .o { text-align: right; font-weight: 700; white-space: nowrap; }
+  .legs .o small { display: block; font-weight: 500; color: var(--muted); font-size: 12px; }
+  .value { font-size: 13px; }
+  .good { color: var(--good); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+
+  .spectrum { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+  .spectrum .bar { grid-column: 1 / -1; height: 10px; border-radius: 99px;
+    background: linear-gradient(90deg, #16a34a, #65a30d, #ca8a04, #ea580c, #dc2626); }
+  .tier { cursor: pointer; padding: 14px; text-align: left; border-radius: 14px; }
+  .tier:hover, .tier.sel { border-color: var(--brand); }
+  .tier .n { font-weight: 800; }
+  .tier .x { font-size: 22px; font-weight: 800; margin: 4px 0; }
+  .tier .c { font-size: 13px; color: var(--muted); }
+  @media (max-width: 760px) { .spectrum { grid-template-columns: 1fr 1fr; } .tier:last-child { grid-column: 1 / -1; } }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; padding: 8px 6px; }
+  td { padding: 10px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  td.num { text-align: right; white-space: nowrap; }
+  tr.row { cursor: pointer; }
+  tr.row:hover td { background: var(--chip); }
+  .books { display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 6px; }
+  .books span { background: var(--chip); border-radius: 8px; padding: 3px 8px; font-size: 12.5px; }
+  .books span.best { background: #dcfce7; color: #166534; font-weight: 700; }
+  @media (max-width: 640px) { .hide-sm { display: none; } }
+
+  .note { font-size: 13.5px; color: var(--muted); }
+  .note b { color: var(--ink); }
+  details.how summary { cursor: pointer; font-weight: 700; }
+  .warnbox { border-left: 4px solid var(--warn); }
+  dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--ink);
+    max-width: 520px; width: calc(100% - 32px); padding: 20px; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog label { display: block; margin: 12px 0 4px; font-weight: 600; font-size: 14px; }
+  dialog input[type=text], dialog input[type=number], dialog select { width: 100%; font: inherit; padding: 8px 10px;
+    border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 14px; }
+  .checks label { font-weight: 400; margin: 0; display: flex; gap: 6px; align-items: center; }
+  .row-end { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  .empty { color: var(--muted); padding: 18px; text-align: center; }
+  a { color: var(--brand); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><span>PP</span> Parlay Picker</div>
+    <div class="status">
+      <span id="mode" class="pill demo"><i class="dot"></i>Demo</span>
+      <span id="scanInfo">Not scanned yet</span>
+      <button id="scanBtn">Scan now</button>
+      <button id="setBtn" aria-label="Settings">⚙ Settings</button>
+    </div>
+  </header>
+
+  <div id="demoNote" class="card warnbox note" style="margin-bottom:14px">
+    <b>You're viewing sample odds, not real games.</b> To scan real sportsbooks
+    (DraftKings, FanDuel, BetMGM, Caesars, BetRivers, Fanatics, Bovada, Pinnacle and more),
+    get a free key at <a href="https://the-odds-api.com/" target="_blank" rel="noopener">the-odds-api.com</a>
+    and paste it in <a href="#" id="openSet2">Settings</a>.
+  </div>
+
+  <section class="card hero">
+    <h1>What do you want to win today?</h1>
+    <p class="sub" style="margin:0">Type it like you'd say it. We'll find the parlay with the best chance of getting you there.</p>
+    <form class="ask" id="askForm">
+      <input id="ask" value="I want to turn $10 into $100" aria-label="Your goal" autocomplete="off">
+      <button class="primary" type="submit">Find picks</button>
+    </form>
+    <div class="chips" id="examples">
+      <button class="chip">Turn $10 into $100</button>
+      <button class="chip">Turn $20 into $50</button>
+      <button class="chip">Turn $5 into $500</button>
+      <button class="chip">Safest bet for $25</button>
+      <button class="chip">Bet $10 to win $1000</button>
+    </div>
+    <div class="filters" id="sportFilters"></div>
+    <div class="answer" id="answer"></div>
+  </section>
+
+  <div id="results"></div>
+
+  <h2>Risk spectrum</h2>
+  <p class="sub" id="specSub">Best parlay at every risk level. Tap one to see the picks.</p>
+  <div class="spectrum" id="spectrum"></div>
+
+  <h2>Today's best single picks</h2>
+  <p class="sub">Biggest edge between our fair chance and the best price anywhere. Tap a row to compare every book.</p>
+  <div class="card" style="padding:6px 12px">
+    <table>
+      <thead><tr><th>Pick</th><th class="hide-sm">Game</th><th style="text-align:right">Best odds</th><th style="text-align:right">Win chance</th><th style="text-align:right">Value</th></tr></thead>
+      <tbody id="topPicks"></tbody>
+    </table>
+  </div>
+
+  <h2>How it works</h2>
+  <div class="card note">
+    <details class="how" open>
+      <summary>Plain-English version</summary>
+      <p><b>1. Scan.</b> Every few minutes we pull the current odds for moneylines, spreads, totals and (optionally)
+        player props from every sportsbook the odds feed covers.</p>
+      <p><b>2. Find the real chance.</b> Each book adds a hidden fee (the "vig") to its odds. We strip it out and average all books
+        (sharp books like Pinnacle count extra). Betting markets already bake in team stats, player history, injuries and
+        where the smart money is going — that's why they're the most accurate public predictor of games.</p>
+      <p><b>3. Shop the line.</b> For every pick we show the book paying the most. Getting +110 instead of -105 adds up fast in a parlay.</p>
+      <p><b>4. Build your parlay.</b> We search thousands of combinations (one pick per game, so picks don't depend on each other)
+        to hit your payout goal with the highest chance of winning.</p>
+      <p><b>Be honest with yourself:</b> no bot can see the future. A "1 in 10" parlay loses 9 times out of 10.
+        Sportsbooks win long-term because of the vig — line shopping and value picks shrink that edge, they don't erase it.
+        Only bet what you're fine losing. Must be 21+ (18+ in some places) and in a legal betting state.
+        Need help? Call or text <b>1-800-GAMBLER</b>.</p>
+    </details>
+  </div>
+</div>
+
+<dialog id="settings">
+  <form method="dialog" id="setForm">
+    <h3 style="margin:0">Settings</h3>
+    <label for="apiKey">The Odds API key <span class="note">(free tier: 500 credits/month)</span></label>
+    <input type="text" id="apiKey" placeholder="Paste your key — leave empty for demo mode" autocomplete="off">
+    <p class="note" style="margin:4px 0 0">Saved only in this browser. Get one at
+      <a href="https://the-odds-api.com/" target="_blank" rel="noopener">the-odds-api.com</a>.</p>
+
+    <label>Sports to scan</label>
+    <div class="checks" id="sportChecks"></div>
+
+    <label for="regions">Sportsbooks</label>
+    <select id="regions">
+      <option value="us">US books (DraftKings, FanDuel, BetMGM, Caesars…)</option>
+      <option value="us,us2">US + more US books (ESPN BET, Fanatics, Hard Rock…)</option>
+      <option value="us,us2,eu">US + Pinnacle and global sharp books (most accurate, more credits)</option>
+    </select>
+
+    <label><input type="checkbox" id="props"> Include player props <span class="note">(uses extra credits per game)</span></label>
+    <label for="propGames">Games per sport to scan for props</label>
+    <input type="number" id="propGames" min="1" max="15" value="3">
+
+    <label for="refresh">Auto re-scan every (minutes)</label>
+    <input type="number" id="refresh" min="2" max="240" value="15">
+
+    <label for="fmt">Odds format</label>
+    <select id="fmt"><option value="american">American (+150 / -120)</option><option value="decimal">Decimal (2.50)</option></select>
+
+    <p class="note" id="creditEst"></p>
+    <div class="row-end">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button class="primary" value="save" id="saveSet">Save &amp; scan</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="engine.js"></script>
+<script src="demo.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
