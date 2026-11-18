@@ -21,6 +21,17 @@ With no key it runs **live** on real games using the current DraftKings lines ES
 total) for the leagues ESPN covers, **re-scanned every minute** while the tab is open. A pick whose price changed since
 you opened the page shows "Line moved".
 
+## Install on your phone (PWA)
+Open the live site on your phone, then add it to your home screen:
+- **iPhone (Safari):** Share button, then **Add to Home Screen**.
+- **Android (Chrome):** menu, then **Install app** (or **Add to Home screen**).
+
+It opens full screen like an app. Files that make this work: `manifest.webmanifest` (name, icons, colors),
+`sw.js` (service worker: caches the app files so it opens fast and offline, always fetches odds live) and `icons/`.
+The service worker only touches this site's own files, never the odds or ESPN requests. After you deploy a change, the
+next open picks it up. If you ever need to force every phone to drop its cached copy, change `CACHE` in `sw.js`.
+Bets, settings and your API key are saved per device, so your phone starts with its own empty tracker.
+
 ## Compare every sportsbook (optional key)
 1. Get a free API key at https://the-odds-api.com (500 credits/month free; paid plans give more).
 2. Click **⚙ Settings**, paste the key, pick your sports, and press **Save & scan**.

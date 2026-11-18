@@ -1,0 +1,18 @@
+{
+  "id": "./",
+  "name": "Parlay Picker",
+  "short_name": "Parlay Picker",
+  "description": "Scans live sportsbook odds and builds the parlay with the best chance of hitting your goal.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fcecda",
+  "theme_color": "#4f46e5",
+  "categories": ["sports", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
