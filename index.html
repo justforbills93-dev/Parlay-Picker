@@ -106,6 +106,29 @@
   .note { font-size: 13.5px; color: var(--muted); }
   .rn { margin-top: 2px; }
   .chip.dim { opacity: .45; }
+  .ask { flex-wrap: wrap; }
+  .ask select { font: inherit; padding: 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); color: var(--ink); }
+  @media (max-width: 640px) { .ask input { flex-basis: 100%; } .ask select, .ask button { flex: 1; } }
+  button.add { width: 28px; height: 28px; padding: 0; border-radius: 50%; font-weight: 800; line-height: 1; margin-top: 4px;
+    border: 1.5px solid var(--brand); color: var(--brand); background: transparent; }
+  button.add.on { background: var(--brand); color: var(--brand-ink); }
+  .pickcell { display: flex; gap: 10px; align-items: flex-start; }
+  .pickcell button.add { margin-top: 0; flex: none; }
+  #topPicks td { overflow-wrap: anywhere; }
+  .search { width: 100%; font: inherit; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); margin-bottom: 10px; }
+  .picks { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .pickbtn { display: flex; gap: 8px; align-items: baseline; text-align: left; padding: 8px 12px; border-radius: 10px; max-width: 100%; }
+  .pickbtn span { min-width: 0; }
+  .pickbtn small { color: var(--muted); }
+  .pickbtn.on { border-color: var(--brand); background: var(--chip); box-shadow: inset 0 0 0 1px var(--brand); }
+  details.game .lbl { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-top: 12px; font-weight: 700; }
+  .slip { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--card); border-top: 1px solid var(--line);
+    box-shadow: 0 -6px 24px rgba(0,0,0,.12); padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .slipwrap { max-width: 980px; margin: 0 auto; }
+  .sliphead { width: 100%; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; border: 0; background: none; padding: 12px 0; text-align: left; }
+  .slipbody { max-height: 55vh; overflow: auto; padding-bottom: 12px; }
+  body.has-slip { padding-bottom: 90px; }
   .tablewrap { overflow-x: auto; }
   tr.row.open td { background: var(--chip); }
   #legPick, #typePick { margin: 0 0 12px; }
@@ -166,6 +189,13 @@
     <p class="sub" style="margin:0">Type it like you'd say it. We'll find the parlay with the best chance of getting you there.</p>
     <form class="ask" id="askForm">
       <input id="ask" value="I want to turn $10 into $100" aria-label="Your goal" autocomplete="off">
+      <select id="legSelect" aria-label="Number of legs">
+        <option value="0">Best # of legs</option>
+        <option value="1">1 leg</option><option value="2">2 legs</option><option value="3">3 legs</option><option value="4">4 legs</option>
+        <option value="5">5 legs</option><option value="6">6 legs</option><option value="7">7 legs</option><option value="8">8 legs</option>
+        <option value="9">9 legs</option><option value="10">10 legs</option><option value="11">11 legs</option><option value="12">12 legs</option>
+        <option value="13">13 legs</option><option value="14">14 legs</option><option value="15">15 legs</option>
+      </select>
       <button class="primary" type="submit">Find picks</button>
     </form>
     <div class="chips" id="examples">
@@ -188,12 +218,17 @@
 
   <h2>Today's best single picks</h2>
   <p class="sub">Biggest edge between our fair chance and the best price anywhere. Tap a row to compare every book.</p>
-  <div class="card" style="padding:6px 12px">
+  <div class="card tablewrap" style="padding:6px 12px">
     <table>
       <thead><tr><th>Pick</th><th class="hide-sm">Game</th><th style="text-align:right">Best odds</th><th style="text-align:right">Win chance</th><th style="text-align:right">Value</th></tr></thead>
       <tbody id="topPicks"></tbody>
     </table>
   </div>
+
+  <h2>Build your own parlay</h2>
+  <p class="sub">Tap any pick to add it to your parlay. Then let the app fill the rest to reach your goal, or bet it as is.</p>
+  <input id="byoSearch" class="search" type="search" placeholder="Search a team, player or game" aria-label="Search picks" autocomplete="off">
+  <div id="byo" class="research"></div>
 
   <h2>Game research</h2>
   <p class="sub">Injury reports, key players, last 5 results, head-to-head and ESPN's matchup model for every game we scanned. Tap a game.</p>
@@ -270,6 +305,8 @@
     </div>
   </form>
 </dialog>
+
+<div id="slip" class="slip" hidden></div>
 
 <dialog id="sportsDlg">
   <form method="dialog">

@@ -53,7 +53,12 @@
     research: {}, researchNote: '', catalog: loadCatalog(), loads: loadBox(),
     mode: '', demoReason: '', memo: new Map(),
     legCount: 0, openRow: 0, types: new Set(['ml', 'spread', 'total', 'prop']),
+    slip: loadSlip(), lockSlip: false, slipOpen: false, legById: new Map(), byoQuery: '',
   };
+  function loadSlip() { try { return JSON.parse(localStorage.getItem('pp-slip') || '[]'); } catch { return []; } }
+  function saveSlip() { try { localStorage.setItem('pp-slip', JSON.stringify(state.slip)); } catch { /* ignore */ } }
+  const inSlip = (id) => state.slip.includes(id);
+  const addBtn = (l) => `<button type="button" class="add ${inSlip(l.id) ? 'on' : ''}" data-add="${esc(l.id)}" aria-label="${inSlip(l.id) ? 'Remove from' : 'Add to'} my parlay">${inSlip(l.id) ? '✓' : '+'}</button>`;
   const MAX_LEGS = 15;
   const TYPE_NAMES = { ml: 'Moneylines', spread: 'Spreads', total: 'Totals', prop: 'Player props' };
 
@@ -358,6 +363,7 @@
         state.researchNote = '';
       }
       state.legs = legs;
+      state.legById = new Map(legs.map((l) => [l.id, l]));
       state.scans++;
       state.lastScan = new Date();
     } catch (e) {
@@ -383,7 +389,7 @@
       <li>
         <div><div class="p">${esc(l.pick)}</div>
           <div class="g">${esc(l.sportTitle)} · ${esc(l.game)} · ${when(l.commence)}</div>${legNotes(l)}</div>
-        <div class="o">${odds(l.price)}<small>${esc(l.book)} · ${pct(l.prob)}</small></div>
+        <div class="o">${odds(l.price)}<small>${esc(l.book)} · ${pct(l.prob)}</small>${addBtn(l)}</div>
       </li>`).join('');
     return `
       <div class="card parlay">
@@ -445,6 +451,25 @@
     state.rows = rows;
 
     let ps;
+    const slipLegs = state.slip.map((id) => state.legById.get(id)).filter(Boolean);
+    if (state.lockSlip && slipLegs.length) {
+      const filled = E.fillAround(state.legs, slipLegs, mult, { ...opts, exactTotal: state.legCount || 0 });
+      ans.innerHTML = filled
+        ? `Goal: <b>${money(g.stake)} → ${money(target)}</b> (${mult.toFixed(1)}x). Built around your ${slipLegs.length} pick${slipLegs.length > 1 ? 's' : ''}: <b>${pct(filled.prob)}</b> chance — <b style="color:${filled.risk.color}">${filled.risk.short.toLowerCase()}</b>.`
+        : (() => {
+          const pays = slipLegs.reduce((a, l) => a * l.price, 1);
+          const why = pays > mult * 1.25
+            ? `Your ${slipLegs.length} pick${slipLegs.length > 1 ? 's' : ''} already pay ${pays.toFixed(1)}x (${money(g.stake * pays)}), more than your goal. Adding legs only raises the payout. Remove a pick or raise your goal.`
+            : state.legCount && state.legCount <= slipLegs.length
+              ? `You picked ${slipLegs.length} legs, so a ${state.legCount}-leg parlay has no room to add more. Choose a bigger number of legs or "Best # of legs".`
+              : `No legs from other games fit around your picks to reach ${mult.toFixed(1)}x${state.legCount ? ` with exactly ${state.legCount} legs` : ''}. Try another leg count or goal.`;
+          return `Goal: <b>${money(g.stake)} → ${money(target)}</b> (${mult.toFixed(1)}x).<br><span class="warn">${esc(why)}</span>`;
+        })();
+      box.innerHTML = `<h2>Your best plays</h2>${filled ? `<div class="grid">${parlayCard(filled, g.stake, `Your ${slipLegs.length} pick${slipLegs.length > 1 ? 's' : ''} + ${filled.legs.length - slipLegs.length} added`)}</div>` : ''}
+        <p class="note"><button type="button" class="chip" id="unlock">Stop building around my picks</button></p>`;
+      $('legSelect').value = String(state.legCount);
+      return;
+    }
     if (state.legCount) {
       const row = rows.find((r) => r.n === state.legCount);
       ps = row && row.p ? [row.p] : [];
@@ -476,6 +501,7 @@
       box.innerHTML = `<h2>Your best plays</h2>${legChips}${legTable(rows, g.stake, mult, games)}`;
       return;
     }
+    $('legSelect').value = String(state.legCount);
     const best = ps[0];
     const tier = best.risk;
     ans.innerHTML = `Goal: <b>${money(g.stake)} → ${money(target)}</b> (${mult.toFixed(1)}x).
@@ -551,7 +577,7 @@
     if (!rows.length) { $('topPicks').innerHTML = '<tr><td colspan="5" class="empty">No picks yet.</td></tr>'; return; }
     $('topPicks').innerHTML = rows.map((l, i) => `
       <tr class="row" data-i="${i}">
-        <td><b>${esc(l.pick)}</b><div class="note">${esc(l.marketLabel)} · ${esc(l.sportTitle)}</div>${legNotes(l)}</td>
+        <td><div class="pickcell">${addBtn(l)}<div><b>${esc(l.pick)}</b><div class="note">${esc(l.marketLabel)} · ${esc(l.sportTitle)}</div>${legNotes(l)}</div></div></td>
         <td class="hide-sm">${esc(l.game)}<div class="note">${when(l.commence)}</div></td>
         <td class="num"><b>${odds(l.price)}</b><div class="note">${esc(l.book)}</div></td>
         <td class="num">${pct(l.prob)}</td>
@@ -609,6 +635,72 @@
     }).join('');
   }
 
+  function renderByo() {
+    const box = $('byo');
+    const f = sportsFilter();
+    const q = state.byoQuery.trim().toLowerCase();
+    const byGame = new Map();
+    for (const l of state.legs) {
+      if (l.blocked || (f && !f.has(l.sport))) continue;
+      if (q && !(l.pick + ' ' + l.game + ' ' + l.sportTitle).toLowerCase().includes(q)) continue;
+      if (!byGame.has(l.eventId)) byGame.set(l.eventId, []);
+      byGame.get(l.eventId).push(l);
+    }
+    if (!byGame.size) { box.innerHTML = `<div class="card empty">${q ? 'No picks match your search.' : 'No picks yet.'}</div>`; return; }
+    const games = [...byGame.values()].sort((a, b) => a[0].commence.localeCompare(b[0].commence));
+    box.innerHTML = games.map((ls) => {
+      const groups = {};
+      for (const l of ls) (groups[l.marketLabel] = groups[l.marketLabel] || []).push(l);
+      const chosen = ls.filter((l) => inSlip(l.id)).length;
+      return `<details class="card game" ${q || chosen ? 'open' : ''}>
+        <summary><b>${esc(ls[0].game)}</b> <span class="note">${esc(ls[0].sportTitle)} · ${when(ls[0].commence)}</span>
+          ${chosen ? `<span class="pill live">${chosen} in my parlay</span>` : ''}</summary>
+        ${Object.entries(groups).map(([m, arr]) => `<div class="lbl">${esc(m)}</div><div class="picks">${arr.map((l) => `
+          <button type="button" class="pickbtn ${inSlip(l.id) ? 'on' : ''}" data-add="${esc(l.id)}">
+            <span>${esc(l.pick)}</span><b>${odds(l.price)}</b><small>${pct(l.prob)}${(l.warnings || []).length ? ' ⚠' : ''}</small></button>`).join('')}</div>`).join('')}
+      </details>`;
+    }).join('');
+  }
+
+  function renderSlip() {
+    const bar = $('slip');
+    const legs = state.slip.map((id) => state.legById.get(id));
+    if (!state.slip.length) { bar.hidden = true; document.body.classList.remove('has-slip'); return; }
+    bar.hidden = false; document.body.classList.add('has-slip');
+    const ok = legs.filter(Boolean);
+    const p = ok.length ? E.summarize(ok) : null;
+    const stake = E.parseGoal($('ask').value).stake || 10;
+    const warns = E.slipWarnings(ok).concat(ok.flatMap((l) => (l.warnings || []).map((w) => `${l.pick}: ${w}`)));
+    const gone = legs.length - ok.length;
+    bar.innerHTML = `<div class="slipwrap">
+      <button type="button" class="sliphead" id="slipToggle" aria-expanded="${state.slipOpen}">
+        <b>My parlay</b> <span>${state.slip.length} leg${state.slip.length > 1 ? 's' : ''}</span>
+        ${p ? `<span>${odds(p.mult)}</span><span>wins ${pct(p.prob)}</span><span><b>${money(stake)} → ${money(stake * p.mult)}</b></span>
+        <span class="tag" style="background:${p.risk.color}">${p.risk.short}</span>` : ''}
+        <span class="note" style="margin-left:auto">${state.slipOpen ? 'Hide ▾' : 'View ▴'}</span>
+      </button>
+      ${state.slipOpen ? `<div class="slipbody">
+        <ul class="legs">${state.slip.map((id) => {
+          const l = state.legById.get(id);
+          if (!l) return `<li><div class="note">A pick from an earlier scan is gone (game started or line moved).</div><div class="o">${`<button type="button" class="add on" data-add="${esc(id)}" aria-label="Remove">✕</button>`}</div></li>`;
+          return `<li><div><div class="p">${esc(l.pick)}</div><div class="g">${esc(l.sportTitle)} · ${esc(l.game)} · ${when(l.commence)}</div></div>
+            <div class="o">${odds(l.price)}<small>${esc(l.book)} · ${pct(l.prob)}</small><button type="button" class="add on" data-add="${esc(l.id)}" aria-label="Remove">✕</button></div></li>`;
+        }).join('')}</ul>
+        ${gone ? `<p class="note">${gone} pick${gone > 1 ? 's are' : ' is'} no longer available.</p>` : ''}
+        ${warns.map((w) => `<p class="warn note" style="margin:6px 0">⚠ ${esc(w)}</p>`).join('')}
+        <div class="row-end" style="justify-content:flex-start;flex-wrap:wrap">
+          <button type="button" class="primary" id="fillSlip">Fill the rest to reach my goal</button>
+          <button type="button" id="clearSlip">Clear</button>
+        </div>
+        <p class="note" style="margin:6px 0 0">"Fill the rest" keeps your picks and adds the best legs from other games to hit the goal in the box above. Use the Legs menu to set the total size.</p>
+      </div>` : ''}</div>`;
+  }
+
+  function refreshPicks() {
+    renderGoal(); renderTopPicks(); renderByo(); renderSlip();
+    const sel = state.selectedTier; if (sel) renderSpectrum();
+  }
+
   function renderFilters() {
     const present = [...new Set(state.legs.map((l) => l.sport))];
     const name = sportName;
@@ -657,6 +749,8 @@
     renderGoal();
     renderSpectrum();
     renderTopPicks();
+    renderByo();
+    renderSlip();
     renderResearch();
   }
 
@@ -783,6 +877,23 @@
     else state.filter.add(k);
     renderFilters(); renderGoal(); renderSpectrum(); renderTopPicks(); renderResearch();
   });
+  document.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add]');
+    if (add) {
+      e.preventDefault(); e.stopPropagation();
+      const id = add.dataset.add;
+      state.slip = inSlip(id) ? state.slip.filter((x) => x !== id) : state.slip.concat(id);
+      if (!state.slip.length) state.lockSlip = false;
+      saveSlip(); refreshPicks();
+      return;
+    }
+    if (e.target.closest('#slipToggle')) { state.slipOpen = !state.slipOpen; renderSlip(); return; }
+    if (e.target.closest('#clearSlip')) { state.slip = []; state.lockSlip = false; saveSlip(); refreshPicks(); return; }
+    if (e.target.closest('#fillSlip')) { state.lockSlip = true; state.slipOpen = false; refreshPicks(); $('results').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    if (e.target.closest('#unlock')) { state.lockSlip = false; refreshPicks(); }
+  }, true);
+  $('byoSearch').addEventListener('input', (e) => { state.byoQuery = e.target.value; renderByo(); });
+  $('legSelect').addEventListener('change', (e) => { state.legCount = Number(e.target.value); renderGoal(); });
   $('results').addEventListener('click', (e) => {
     const lc = e.target.closest('[data-legs]');
     if (lc) { state.legCount = Number(lc.dataset.legs); renderGoal(); return; }

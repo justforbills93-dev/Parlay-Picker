@@ -82,3 +82,16 @@ test('exact leg counts: lands on target, one pick per game, explains impossible 
   assert.ok(big && big.exact && big.legs.length === Math.min(n, 9), 'long parlays are built when the payout allows');
   assert.ok(E.minPayout(legs, 3) <= E.minPayout(legs, 4));
 });
+
+test('build around chosen legs', () => {
+  const legs = E.buildLegs(D.generate(new Date('2026-11-18T12:00:00Z')));
+  const favs = legs.filter((l) => l.market === 'h2h' && l.prob > 0.55);
+  const locked = [favs[0], favs.find((l) => l.eventId !== favs[0].eventId)];
+  const p = E.fillAround(legs, locked, 10);
+  assert.ok(p && p.exact && p.mult >= 10 / 1.31 && p.mult <= 12.5);
+  assert.ok(locked.every((l) => p.legs.includes(l)), 'keeps the chosen legs');
+  assert.strictEqual(new Set(p.legs.map((l) => l.eventId)).size, p.legs.length);
+  const six = E.fillAround(legs, locked, 10, { exactTotal: 6 });
+  assert.ok(!six || six.legs.length === 6);
+  assert.strictEqual(E.fillAround(legs, locked, 1.01), null, 'picks already pay more than the goal');
+});

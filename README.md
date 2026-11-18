@@ -30,6 +30,14 @@ parlay at each size that pays your goal, with its chance of winning. When a size
 "even the 9 safest picks together pay 14.1x". More games (more sports selected) make longer parlays possible.
 At the same payout, more legs almost always means a lower chance, because each leg adds the sportsbook's fee.
 
+## Pick your own legs
+- Tap **+** on any pick (in a parlay, the best-picks table, or **Build your own parlay**, which lists every pick for
+  every game with a search box) to add it to **My parlay** at the bottom of the screen.
+- My parlay shows the combined odds, chance of winning and payout for the bet in the goal box, and warns about
+  picks from the same game.
+- **Fill the rest to reach my goal** keeps your picks and adds the best legs from other games. The **legs menu**
+  next to Find picks sets the total size (or "Best # of legs").
+
 ## Sports
 Tap **Choose sports** under the goal box. With an API key the list is loaded live from the odds feed, so it covers
 every sport and league that has betting lines right now (NFL, NBA, NHL, MLB, college, dozens of soccer leagues,

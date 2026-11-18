@@ -343,6 +343,48 @@
     return out;
   }
 
+  /**
+   * Keep the user's chosen legs and add the best legs from other games so the
+   * whole parlay pays about `target`. `exactTotal` = total leg count wanted.
+   */
+  function fillAround(legs, locked, target, o = {}) {
+    const lockedMult = locked.reduce((a, l) => a * l.price, 1);
+    const rest = target / lockedMult;
+    const onTarget = rest <= 1.05 && rest >= 1 / 1.25;
+    // Adding legs only raises the payout, so if the picks already reach the goal
+    // (or a fixed size leaves no room), the picks alone are the answer.
+    if (o.exactTotal && o.exactTotal <= locked.length) return onTarget && o.exactTotal === locked.length ? summarize(locked, true) : null;
+    if (rest < 1.15) return onTarget && !o.exactTotal ? summarize(locked, true) : null;
+    const used = new Set(locked.map((l) => l.eventId));
+    const pool = legs.filter((l) => !used.has(l.eventId));
+    let best = null;
+    if (o.exactTotal) {
+      best = findExact(pool, rest, o.exactTotal - locked.length, o);
+    } else {
+      const cands = findParlays(pool, rest, { ...o, count: 3 }).filter((p) => p.exact)
+        .concat(findByLegCount(pool, rest, { ...o, maxLegs: o.maxLegs ?? 12 }));
+      best = cands.sort((a, b) => b.prob - a.prob)[0] || null;
+    }
+    if (!best || !best.exact) return null;
+    const out = summarize(locked.concat(best.legs), true);
+    out.lockedCount = locked.length;
+    return out;
+  }
+
+  /** Warnings for a hand-built slip: same-game and opposite-side picks. */
+  function slipWarnings(slip) {
+    const out = [];
+    const byGame = new Map();
+    for (const l of slip) { if (!byGame.has(l.eventId)) byGame.set(l.eventId, []); byGame.get(l.eventId).push(l); }
+    for (const [, ls] of byGame) {
+      if (ls.length < 2) continue;
+      const markets = ls.map((l) => l.market + '|' + (l.pick.match(/^(.*?) (Over|Under) /)?.[1] || ''));
+      if (new Set(markets).size < markets.length) out.push(`${ls[0].game}: two picks from the same bet can't both win.`);
+      else out.push(`${ls[0].game}: ${ls.length} picks from one game. Results are linked, so the chance shown is rough, and books price these as same-game parlays.`);
+    }
+    return out;
+  }
+
   function summarize(legs, exact = true) {
     const mult = legs.reduce((a, l) => a * l.price, 1);
     const prob = legs.reduce((a, l) => a * l.prob, 1);
@@ -412,6 +454,6 @@
   return {
     SHARP_BOOKS, MARKET_LABELS, RISK_TIERS,
     americanToDecimal, decimalToAmerican, fmtAmerican,
-    buildLegs, findParlays, findExact, findByLegCount, minPayout, gameCount, legType, summarize, riskLevel, oneIn, parseGoal,
+    buildLegs, findParlays, findExact, findByLegCount, fillAround, slipWarnings, minPayout, gameCount, legType, summarize, riskLevel, oneIn, parseGoal,
   };
 });
