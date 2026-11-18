@@ -176,6 +176,64 @@
     };
   }
 
+  /* ---------- keyless live odds (DraftKings lines on ESPN's scoreboard) ---------- */
+
+  function amToDec(a) {
+    const v = parseFloat(String(a ?? '').replace('+', ''));
+    if (!isFinite(v) || v === 0 || Math.abs(v) < 100) return null;
+    return v > 0 ? 1 + v / 100 : 1 + 100 / Math.abs(v);
+  }
+  function lineNum(x) {
+    const v = parseFloat(String(x ?? '').replace(/^[ou]/i, ''));
+    return isFinite(v) ? v : null;
+  }
+  const cur = (x) => (x && (x.close || x.current || x.open)) || {};
+
+  // Turns ESPN scoreboard odds into the same shape The Odds API returns.
+  function oddsFromScoreboard(json, sportKey) {
+    const title = json.leagues?.[0]?.abbreviation || json.leagues?.[0]?.name || sportKey;
+    return (json.events || []).flatMap((e) => {
+      const comp = e.competitions?.[0];
+      if (!comp || (e.status?.type?.state && e.status.type.state !== 'pre')) return [];
+      const cs = comp.competitors || [];
+      const home = cs.find((c) => c.homeAway === 'home'), away = cs.find((c) => c.homeAway === 'away');
+      if (!home || !away) return [];
+      const H = home.team?.displayName, A = away.team?.displayName;
+      const bookmakers = (comp.odds || []).map((o) => {
+        const markets = [];
+        const ml = o.moneyline;
+        if (ml) {
+          const outs = [[H, ml.home], [A, ml.away], ['Draw', ml.draw]]
+            .map(([name, x]) => ({ name, price: amToDec(cur(x).odds) })).filter((x) => x.price);
+          if (outs.length >= 2) markets.push({ key: 'h2h', outcomes: outs });
+        }
+        const ps = o.pointSpread;
+        if (ps) {
+          const h = cur(ps.home), a = cur(ps.away);
+          const hl = lineNum(h.line), al = lineNum(a.line), ho = amToDec(h.odds), ao = amToDec(a.odds);
+          if (hl != null && al != null && ho && ao) {
+            markets.push({ key: 'spreads', outcomes: [{ name: H, price: ho, point: hl }, { name: A, price: ao, point: al }] });
+          }
+        }
+        const t = o.total;
+        if (t) {
+          const ov = cur(t.over), un = cur(t.under);
+          const pt = lineNum(ov.line), oo = amToDec(ov.odds), uo = amToDec(un.odds);
+          if (pt != null && oo && uo) {
+            markets.push({ key: 'totals', outcomes: [{ name: 'Over', price: oo, point: pt }, { name: 'Under', price: uo, point: pt }] });
+          }
+        }
+        const name = o.provider?.displayName || o.provider?.name || 'Sportsbook';
+        return { key: norm(name).replace(/ /g, '') || 'espn', title: name, markets };
+      }).filter((b) => b.markets.length);
+      if (!bookmakers.length) return [];
+      return [{
+        id: 'espn-' + e.id, sport_key: sportKey, sport_title: title,
+        commence_time: new Date(e.date).toISOString(), home_team: H, away_team: A, bookmakers,
+      }];
+    });
+  }
+
   /* ---------- fatigue ---------- */
 
   // Team fatigue from the schedule: rest before this game, back-to-backs,
@@ -311,6 +369,6 @@
   return {
     LEAGUES, UNCERTAIN, norm, sameTeam, samePlayer, etDate,
     scoreboardUrls, summaryUrl, parseScoreboard, matchGame, parseSummary,
-    starAlerts, applyResearch, teamFatigue, parseLoad,
+    starAlerts, applyResearch, teamFatigue, parseLoad, oddsFromScoreboard,
   };
 });

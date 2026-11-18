@@ -8,9 +8,10 @@ No install or build step. Either:
 - open `index.html` in a browser, or
 - serve the folder: `python3 -m http.server -d parlay-picker 8000` and go to http://localhost:8000
 
-It starts in **demo mode** with sample odds (not real games) so you can try it right away.
+With no key it runs **live** on real games using the current DraftKings lines ESPN publishes (moneyline, spread,
+total) for the leagues ESPN covers. If that can't load, it falls back to **demo mode** with sample odds and says why.
 
-## Turn on live odds
+## Compare every sportsbook (optional key)
 1. Get a free API key at https://the-odds-api.com (500 credits/month free; paid plans give more).
 2. Click **⚙ Settings**, paste the key, pick your sports, and press **Save & scan**.
 

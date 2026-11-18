@@ -51,6 +51,7 @@
     settings: load(), events: [], legs: [], scans: 0, lastScan: null, nextScan: null,
     remaining: null, error: null, filter: new Set(), selectedTier: null, scanning: false,
     research: {}, researchNote: '', catalog: loadCatalog(), loads: loadBox(),
+    mode: '', demoReason: '', memo: new Map(),
   };
 
   function loadCatalog() {
@@ -78,7 +79,10 @@
   function save() {
     try { localStorage.setItem('pp-settings', JSON.stringify(state.settings)); } catch { /* private mode */ }
   }
-  const live = () => !!state.settings.apiKey.trim();
+  // Modes: 'odds' = Odds API key (10+ books), 'espn' = no key, live DraftKings
+  // lines from ESPN's scoreboard, 'demo' = sample data when neither works.
+  const hasKey = () => !!state.settings.apiKey.trim();
+  const live = () => state.mode !== 'demo';
 
   /* ---------- formatting ---------- */
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -231,7 +235,7 @@
       const evs = events.filter((e) => e.sport_key === sport);
       const stale = evs.filter((e) => !state.research[e.id] || now - state.research[e.id].updated > maxAge);
       if (!stale.length) { matched += evs.length; continue; }
-      const boards = await pool(R.scoreboardUrls(sport), 2, (u) => getJSON(u));
+      const boards = await pool(R.scoreboardUrls(sport), 2, (u) => memoJSON(u, 5 * 60000));
       const games = boards.filter(Boolean).flatMap((b) => R.parseScoreboard(b));
       const jobs = stale.map((e) => ({ e, g: R.matchGame(e, games) })).filter((j) => j.g);
       matched += evs.length - stale.length;
@@ -286,6 +290,33 @@
     saveBox();
   }
 
+  // Same URL within `ttl` ms reuses the response (scoreboards serve both odds and research).
+  function memoJSON(url, ttl) {
+    const hit = state.memo.get(url);
+    if (hit && Date.now() - hit.at < ttl) return hit.p;
+    const p = getJSON(url);
+    state.memo.set(url, { at: Date.now(), p });
+    p.catch(() => state.memo.delete(url));
+    return p;
+  }
+
+  async function scanEspn() {
+    const now = new Date();
+    const keys = state.settings.sports.filter((k) => R.LEAGUES[k]);
+    if (!keys.length) throw new Error('none of your chosen sports have free live odds. Add an Odds API key in Settings for those.');
+    let firstErr = null, ok = 0;
+    const lists = await pool(keys, 4, async (k) => {
+      const boards = await Promise.all(R.scoreboardUrls(k, now, HOURS_AHEAD).map((u) =>
+        memoJSON(u, 60000).then((b) => { ok++; return b; }).catch((e) => { firstErr = firstErr || e; return null; })));
+      return boards.filter(Boolean).flatMap((b) => R.oddsFromScoreboard(b, k));
+    });
+    if (!ok && firstErr) throw firstErr;
+    const until = now.getTime() + HOURS_AHEAD * 3600000;
+    const events = lists.filter(Boolean).flat().filter((e) => new Date(e.commence_time).getTime() <= until);
+    const seen = new Set();
+    return events.filter((e) => !seen.has(e.id) && seen.add(e.id));
+  }
+
   async function scan() {
     if (state.scanning) return;
     state.scanning = true;
@@ -293,11 +324,24 @@
     $('scanBtn').textContent = 'Scanning…';
     state.error = null;
     try {
-      const events = live() ? await scanLive()
-        : window.ParlayDemo.generate(new Date(), state.scans).filter((e) => state.settings.sports.includes(e.sport_key) || !state.settings.sports.some((k) => DEMO_SPORTS.has(k)));
+      let events;
+      if (hasKey()) {
+        events = await scanLive();
+        state.mode = 'odds';
+      } else {
+        try {
+          events = await scanEspn();
+          if (!events.length) throw new Error('no upcoming games with posted lines in the next 36 hours for your sports.');
+          state.mode = 'espn';
+        } catch (e) {
+          state.mode = 'demo';
+          state.demoReason = e.message || String(e);
+          events = window.ParlayDemo.generate(new Date(), state.scans).filter((e) => state.settings.sports.includes(e.sport_key) || !state.settings.sports.some((k) => DEMO_SPORTS.has(k)));
+        }
+      }
       const now = Date.now();
       state.events = events.filter((e) => new Date(e.commence_time).getTime() > now); // pre-game only
-      let legs = E.buildLegs(state.events, { minBooks: live() ? 3 : 2 });
+      let legs = E.buildLegs(state.events, { minBooks: state.mode === 'odds' ? 3 : state.mode === 'espn' ? 1 : 2 });
       if (state.settings.research) {
         if (live()) {
           try { await loadResearch(state.events); } catch (e) { state.researchNote = 'research unavailable'; console.warn(e); }
@@ -504,11 +548,20 @@
   function renderStatus() {
     const m = $('mode');
     if (state.error) { m.className = 'pill err'; m.innerHTML = '<i class="dot"></i>Error'; }
-    else if (live()) { m.className = 'pill live'; m.innerHTML = '<i class="dot"></i>Live odds'; }
+    else if (state.mode === 'odds') { m.className = 'pill live'; m.innerHTML = '<i class="dot"></i>Live odds'; }
+    else if (state.mode === 'espn') { m.className = 'pill live'; m.innerHTML = '<i class="dot"></i>Live · DraftKings'; }
     else { m.className = 'pill demo'; m.innerHTML = '<i class="dot"></i>Demo'; }
-    $('demoNote').style.display = live() && !state.error ? 'none' : '';
+    const n = $('demoNote');
+    n.style.display = state.mode === 'odds' && !state.error ? 'none' : '';
+    const keyLink = 'get a free key at <a href="https://the-odds-api.com/" target="_blank" rel="noopener">the-odds-api.com</a> and paste it in <a href="#" id="openSet2">Settings</a>';
     if (state.error) {
-      $('demoNote').innerHTML = `<b>Scan failed.</b> ${esc(state.error)} <a href="#" id="openSet2">Open Settings</a>`;
+      n.innerHTML = `<b>Scan failed.</b> ${esc(state.error)} <a href="#" id="openSet2">Open Settings</a>`;
+    } else if (state.mode === 'espn') {
+      n.innerHTML = `<b>Live odds are on</b>: real games and current DraftKings lines (moneyline, spread, total) for leagues ESPN covers. ` +
+        `To compare 10+ sportsbooks, find the best price, add player props and unlock every sport, ${keyLink}.`;
+    } else {
+      n.innerHTML = `<b>You're viewing sample odds, not real games.</b> Live odds couldn't load: ${esc(state.demoReason || 'unknown reason')}. ` +
+        `Press Scan now to retry, or ${keyLink}.`;
     }
     updateClock();
   }
@@ -607,7 +660,9 @@
           const why = c.has_outrights ? ' <span class="note">(futures only)</span>' : !c.active ? ' <span class="note">(off-season)</span>' : '';
           return `<label title="${esc(c.key)}"><input type="checkbox" value="${esc(c.key)}" data-group="${esc(g)}" ${sel.has(c.key) && !off ? 'checked' : ''} ${off ? 'disabled' : ''}> ${esc(c.title)}${why}</label>`;
         }).join('')}</div></fieldset>`).join('');
-    $('sportsNote').textContent = live()
+    $('sportsNote').textContent = state.mode === 'espn'
+      ? 'Without a key, live odds cover the leagues ESPN posts lines for (NFL, NBA, NHL, MLB, college, WNBA, major soccer). Add a key in Settings for every sport here.'
+      : state.mode === 'odds'
       ? 'This list comes live from the odds feed: every sport with betting lines right now.'
       : 'Demo mode only has sample games for NBA, NFL, NHL and EPL. Add your API key in Settings to load the full live list of every sport.';
     sportCount();
