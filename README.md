@@ -52,6 +52,13 @@ free Odds API key. Without one, the app says so instead of skipping it silently.
 **All Tennis**: tennis is listed per tournament in the odds feed and those change every week, so "All Tennis"
 picks up whatever tournaments have lines at each scan. Most tennis has moneylines only.
 
+## Totals (over/under)
+The **Totals** tab lists every game with an over/under line. For each game it shows the main line with both sides'
+fair chances (and which side the market leans), the **safest** line on offer and the **best value** one. With an
+Odds API key and **Alternate totals** on in Settings, it also scans alternate lines (lower overs, higher unders),
+which is where the highest-chance totals are. **Shortest odds allowed** limits "safest" so it still pays something
+(e.g. nothing shorter than -500), and the tab builds the safest totals-only parlay for the goal on the Parlays tab.
+
 ## Parlay sizes
 Parlays mix moneylines, spreads, totals and player props (one pick per game). The **Mix** chips limit which types are used.
 The **Legs** chips (Best, 1–15) show the best parlay of exactly that size, and **Every parlay size** lists the best

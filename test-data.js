@@ -72,6 +72,16 @@
     return p < 0.5 ? x : -x;
   }
 
+  function normCdf(x) {
+    // Abramowitz-Stegun approximation.
+    const t = 1 / (1 + 0.2316419 * Math.abs(x));
+    const d = 0.3989423 * Math.exp(-x * x / 2);
+    const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+    return x > 0 ? 1 - p : p;
+  }
+  const TOTAL_SD = { basketball_nba: 18, americanfootball_nfl: 13, icehockey_nhl: 1.7 };
+  const ALT_STEPS = { basketball_nba: [5, 10, 15, 20], americanfootball_nfl: [3, 7, 10, 14], icehockey_nhl: [1, 2] };
+
   function roundAmerican(dec) {
     let a = dec >= 2 ? (dec - 1) * 100 : -100 / (dec - 1);
     a = Math.round(a / 5) * 5;
@@ -133,6 +143,17 @@
           const tp = price([0.5, 0.5], br, vig);
           markets.push({ key: 'totals', outcomes: [
             { name: 'Over', price: tp[0], point: total }, { name: 'Under', price: tp[1], point: total }] });
+          if (ALT_STEPS[key]) {
+            const outs = [];
+            for (const step of ALT_STEPS[key]) {
+              for (const line of [total - step, total + step]) {
+                const pOver = normCdf((total - line) / TOTAL_SD[key]);
+                const ap = price([pOver, 1 - pOver], br, vig + 0.02);
+                outs.push({ name: 'Over', price: ap[0], point: line }, { name: 'Under', price: ap[1], point: line });
+              }
+            }
+            markets.push({ key: 'alternate_totals', outcomes: outs.filter((o) => o.price > 1.01) });
+          }
 
           players.forEach((pl, pi) => s.props.forEach((m, mi) => {
             const pp = price([0.5, 0.5], br, vig + 0.02);

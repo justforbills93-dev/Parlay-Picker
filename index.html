@@ -114,6 +114,26 @@
   .note { font-size: 13.5px; color: var(--muted); }
   .rn { margin-top: 2px; }
   .chip.dim { opacity: .45; }
+  .minisel { font: inherit; font-size: 14px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  .tsub { font-size: 16px; margin: 18px 0 8px; }
+  .tgame { display: grid; gap: 10px; }
+  .tgame .thead { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+  .tmain { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; align-items: center; }
+  .tmain > span:not(.note) { background: var(--chip); border-radius: 8px; padding: 4px 9px; }
+  .tmain > span.lean { box-shadow: inset 0 0 0 1.5px var(--brand); }
+  .tpick { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: center; border-top: 1px solid var(--line); padding-top: 10px; }
+  .tpick .tl { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); grid-column: 1 / -1; }
+  .tpick.safe .tl { color: var(--good); }
+  .tpick .tp { min-width: 0; grid-column: 1 / 3; }
+  .tpick .to { display: flex; gap: 10px; align-items: center; white-space: nowrap; }
+  .tpick .to span { color: var(--muted); font-size: 13.5px; }
+  .tpick .to button.add { margin-top: 0; }
+  details.ladder summary { cursor: pointer; font-size: 13.5px; color: var(--brand); font-weight: 600; }
+  @media (max-width: 720px) {
+    .tabs { overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tabs a { flex: 1 0 58px; }
+  }
   /* Pages: tabs under the header on wide screens, an app-style bar at the bottom on phones. */
   :root { --tabh: 0px; }
   .page > h2:first-child { margin-top: 8px; }
@@ -251,7 +271,7 @@
       <button id="scanBtn" class="small">Scan now</button>
     </span>
   </div>
-  <nav class="tabs" id="tabs" aria-label="Pages"><a href="#picks" data-page="picks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="16" r="3"/></svg><span>Parlays</span><b class="count" data-count="picks"></b></a><a href="#risk" data-page="risk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 0 1 16 0"/><path d="M12 18l4-6"/></svg><span>Risk</span><b class="count" data-count="risk"></b></a><a href="#top" data-page="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Top picks</span><b class="count" data-count="top"></b></a><a href="#build" data-page="build"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/><rect x="3" y="3" width="18" height="18" rx="4"/></svg><span>Build</span><b class="count" data-count="build"></b></a><a href="#games" data-page="games"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Games</span><b class="count" data-count="games"></b></a><a href="#track" data-page="track"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg><span>Tracker</span><b class="count" data-count="track"></b></a></nav>
+  <nav class="tabs" id="tabs" aria-label="Pages"><a href="#picks" data-page="picks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="16" r="3"/></svg><span>Parlays</span><b class="count" data-count="picks"></b></a><a href="#totals" data-page="totals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/><path d="M5 5l3 3M19 19l-3-3"/></svg><span>Totals</span><b class="count" data-count="totals"></b></a><a href="#risk" data-page="risk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 0 1 16 0"/><path d="M12 18l4-6"/></svg><span>Risk</span><b class="count" data-count="risk"></b></a><a href="#top" data-page="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Top picks</span><b class="count" data-count="top"></b></a><a href="#build" data-page="build"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/><rect x="3" y="3" width="18" height="18" rx="4"/></svg><span>Build</span><b class="count" data-count="build"></b></a><a href="#games" data-page="games"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Games</span><b class="count" data-count="games"></b></a><a href="#track" data-page="track"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg><span>Tracker</span><b class="count" data-count="track"></b></a></nav>
 
   <section class="page" id="page-picks">
   <div id="statusNote" class="card warnbox note" style="margin-bottom:14px">Loading live odds…</div>
@@ -294,6 +314,31 @@
   </div>
 
   <div id="results"></div>
+  </section>
+
+  <section class="page" id="page-totals" hidden>
+  <h2>Totals (over/under)</h2>
+  <p class="sub">Every game with an over/under line: which side the market leans, the safest line on offer, and the best value. Tap + to add one to your parlay.</p>
+  <div class="filters" style="margin:0 0 10px">
+    <label for="totalsCap">Shortest odds allowed</label>
+    <select id="totalsCap" class="minisel">
+      <option value="any">Any (safest possible)</option>
+      <option value="-1000">-1000</option>
+      <option value="-500" selected>-500</option>
+      <option value="-300">-300</option>
+      <option value="-200">-200</option>
+      <option value="-150">-150</option>
+    </select>
+    <label for="totalsOrder">Sort</label>
+    <select id="totalsOrder" class="minisel">
+      <option value="safe">Safest first</option>
+      <option value="time">Start time</option>
+    </select>
+  </div>
+  <p class="note" id="totalsNote"></p>
+  <div id="totalsParlay"></div>
+  <h3 class="tsub">Every game</h3>
+  <div id="totalsList" class="research"></div>
   </section>
 
   <section class="page" id="page-risk" hidden>
@@ -383,7 +428,8 @@
     </select>
 
     <label><input type="checkbox" id="props"> Include player props <span class="note">(uses extra credits per game)</span></label>
-    <label for="propGames">Games per sport to scan for props</label>
+    <label><input type="checkbox" id="altTotals"> Alternate totals: safer lower overs / higher unders <span class="note">(extra credits per game)</span></label>
+    <label for="propGames">Games per sport to scan for props and alternate totals</label>
     <input type="number" id="propGames" min="1" max="15" value="3">
 
     <label for="refresh">Odds API re-scan every (minutes) <span class="note">(free ESPN feed always refreshes every minute)</span></label>

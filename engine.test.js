@@ -125,3 +125,17 @@ test('buildLegs keeps structured fields for settling', () => {
   const l = E.buildLegs([ev]).find((x) => x.outcome === 'A');
   assert.strictEqual(l.point, -3.5); assert.strictEqual(l.home, 'A'); assert.strictEqual(l.away, 'B');
 });
+
+test('totals board: main line, lean, safest including alternate lines', () => {
+  const legs = E.buildLegs(D.generate(new Date('2026-11-22T12:00:00Z')));
+  const board = E.totalsBoard(legs);
+  assert.ok(board.length > 10, 'every game with a total is listed');
+  for (const g of board) {
+    assert.ok(g.over && g.under && g.mainPoint, `${g.game} has a main over/under`);
+    assert.ok(g.lean.prob >= Math.min(g.over.prob, g.under.prob));
+    assert.ok(g.legs.every((l) => g.safest.prob >= l.prob || l.prob > 0.97), 'safest has the highest chance');
+    assert.strictEqual(E.legType(g.safest), 'total');
+  }
+  assert.ok(board.some((g) => g.ladder.length && g.safest.market === 'alternate_totals'), 'alternate lines are used when safer');
+  for (let i = 1; i < board.length; i++) assert.ok(board[i - 1].safest.prob >= board[i].safest.prob, 'sorted safest first');
+});

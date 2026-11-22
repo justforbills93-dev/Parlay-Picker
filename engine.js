@@ -31,7 +31,7 @@
   const ONE_SIDED_VIG = 0.08;
 
   const MARKET_LABELS = {
-    h2h: 'Moneyline', spreads: 'Spread', totals: 'Total',
+    h2h: 'Moneyline', spreads: 'Spread', totals: 'Total', alternate_totals: 'Alt total',
     player_points: 'Points', player_rebounds: 'Rebounds', player_assists: 'Assists',
     player_threes: '3-Pointers', player_pass_yds: 'Passing Yds',
     player_rush_yds: 'Rushing Yds', player_reception_yds: 'Receiving Yds',
@@ -68,7 +68,7 @@
     const unit = (MARKET_LABELS[marketKey] || marketKey).toLowerCase();
     if (marketKey === 'h2h') return o.name === 'Draw' ? 'Draw (tie)' : `${o.name} to win`;
     if (marketKey === 'spreads') return `${o.name} ${fmtPoint(o.point)}`;
-    if (marketKey === 'totals') return `${o.name} ${o.point} total`;
+    if (marketKey === 'totals' || marketKey === 'alternate_totals') return `${o.name} ${o.point} total`;
     if (isProp(marketKey)) {
       const who = o.description || '';
       if (o.point == null) return `${who} — ${unit}: ${o.name}`;
@@ -164,7 +164,8 @@
    * independent (same-game legs are correlated and books price them differently).
    */
   function legType(l) {
-    return l.isProp ? 'prop' : l.market === 'h2h' ? 'ml' : l.market === 'spreads' ? 'spread' : l.market === 'totals' ? 'total' : 'other';
+    return l.isProp ? 'prop' : l.market === 'h2h' ? 'ml' : l.market === 'spreads' ? 'spread'
+      : (l.market === 'totals' || l.market === 'alternate_totals') ? 'total' : 'other';
   }
 
   /**
@@ -376,6 +377,46 @@
     return out;
   }
 
+  /**
+   * Every game's totals (over/under): the main line, which side the market
+   * leans to, the safest line on offer (highest chance, alternate lines
+   * included) and the best-value one. Games come safest-first.
+   */
+  function totalsBoard(legs, o = {}) {
+    const games = new Map();
+    for (const l of legs) {
+      if (legType(l) !== 'total' || l.blocked) continue;
+      if (o.sports && !o.sports.has(l.sport)) continue;
+      if (!games.has(l.eventId)) games.set(l.eventId, []);
+      games.get(l.eventId).push(l);
+    }
+    const out = [];
+    for (const [eventId, ls] of games) {
+      const point = (l) => parseFloat(l.pick.match(/(Over|Under) ([\d.]+)/)?.[2]);
+      const side = (l) => (/^Over /.test(l.pick) ? 'Over' : 'Under');
+      // Main line: the regular "totals" market point quoted by the most books.
+      const mainLegs = ls.filter((l) => l.market === 'totals');
+      const byPoint = new Map();
+      for (const l of mainLegs) {
+        const k = point(l);
+        byPoint.set(k, (byPoint.get(k) || 0) + l.books);
+      }
+      const mainPoint = [...byPoint.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      const over = mainLegs.find((l) => point(l) === mainPoint && side(l) === 'Over') || null;
+      const under = mainLegs.find((l) => point(l) === mainPoint && side(l) === 'Under') || null;
+      const lean = over && under ? (over.prob >= under.prob ? over : under) : over || under;
+      const usable = ls.filter((l) => l.prob <= (o.maxProb ?? 0.97) && l.price > 1.01);
+      const safest = usable.slice().sort((a, b) => b.prob - a.prob || b.price - a.price)[0] || lean;
+      const value = ls.slice().sort((a, b) => b.ev - a.ev)[0];
+      const ladder = usable.filter((l) => l.market === 'alternate_totals').sort((a, b) => b.prob - a.prob);
+      out.push({
+        eventId, game: ls[0].game, sport: ls[0].sport, sportTitle: ls[0].sportTitle, commence: ls[0].commence,
+        mainPoint, over, under, lean, safest, value, ladder, legs: ls,
+      });
+    }
+    return out.sort((a, b) => (o.order === 'time' ? a.commence.localeCompare(b.commence) : (b.safest?.prob || 0) - (a.safest?.prob || 0)));
+  }
+
   /** Warnings for a hand-built slip: same-game and opposite-side picks. */
   function slipWarnings(slip) {
     const out = [];
@@ -503,6 +544,6 @@
   return {
     SHARP_BOOKS, MARKET_LABELS, RISK_TIERS,
     americanToDecimal, decimalToAmerican, fmtAmerican,
-    buildLegs, findParlays, findExact, findByLegCount, fillAround, slipWarnings, settleLeg, settleBet, sameName, minPayout, gameCount, legType, summarize, riskLevel, oneIn, parseGoal,
+    buildLegs, findParlays, findExact, findByLegCount, fillAround, slipWarnings, totalsBoard, settleLeg, settleBet, sameName, minPayout, gameCount, legType, summarize, riskLevel, oneIn, parseGoal,
   };
 });

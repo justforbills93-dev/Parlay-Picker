@@ -38,6 +38,9 @@
     baseball_mlb: 'batter_hits,pitcher_strikeouts',
   };
   const API = 'https://api.the-odds-api.com/v4';
+  // Sports where books post alternate totals.
+  const ALT_TOTALS = new Set(['basketball_nba', 'basketball_ncaab', 'basketball_wnba', 'americanfootball_nfl',
+    'americanfootball_ncaaf', 'icehockey_nhl', 'baseball_mlb']);
   const WINDOWS = { today: 'Today', tomorrow: 'Tomorrow', 2: 'Today & tomorrow', 3: 'Next 3 days', 5: 'Next 5 days', 7: 'Next 7 days' };
 
   // Which games to scan: from/to times for the chosen day range (local days).
@@ -52,7 +55,7 @@
 
   const DEFAULTS = {
     apiKey: '', sports: ['americanfootball_nfl', 'basketball_nba', 'icehockey_nhl', 'americanfootball_ncaaf'],
-    regions: 'us,us2', props: false, propGames: 3, refresh: 15, fmt: 'american',
+    regions: 'us,us2', props: false, propGames: 3, refresh: 15, fmt: 'american', altTotals: true,
     research: true, avoidUncertain: true, researchMin: 60, fatigue: true, avoidTired: false, window: '2',
     autoScan: true,
   };
@@ -240,19 +243,22 @@
         })));
     const events = lists.filter(Boolean).flat();
 
-    if (s.props) {
+    // Per-game extras in one request each: player props and/or alternate totals
+    // (lower overs / higher unders: the safest totals lines).
+    if (s.props || s.altTotals) {
       const jobs = [];
       for (const k of keys) {
-        if (!PROP_MARKETS[k]) continue;
+        const markets = [s.props && PROP_MARKETS[k], s.altTotals && ALT_TOTALS.has(k) && 'alternate_totals'].filter(Boolean).join(',');
+        if (!markets) continue;
         events.filter((e) => e.sport_key === k)
           .sort((a, b) => a.commence_time.localeCompare(b.commence_time))
           .slice(0, s.propGames)
           .forEach((ev) => jobs.push(
             getJSON(`${API}/sports/${k}/events/${ev.id}/odds?apiKey=${key}&regions=${s.regions}` +
-              `&markets=${PROP_MARKETS[k]}&oddsFormat=decimal&includeLinks=true`)
-              .then((p) => mergeProps(ev, p)).catch((e) => console.warn('props', ev.id, e))));
+              `&markets=${markets}&oddsFormat=decimal&includeLinks=true`)
+              .then((p) => mergeProps(ev, p)).catch((e) => console.warn('extras', ev.id, e))));
       }
-      await Promise.all(jobs);
+      await pool(jobs.map((j) => () => j), 6, (f) => f());
     }
     return events;
   }
@@ -805,6 +811,67 @@
     $('spectrum').innerHTML = html;
   }
 
+  /* ---------- totals ---------- */
+  state.totalsOrder = 'safe';
+  state.totalsCap = '-500';
+
+  function renderTotals() {
+    const box = $('totalsList');
+    const cap = state.totalsCap === 'any' ? 1.0001 : E.americanToDecimal(Number(state.totalsCap));
+    const board = E.totalsBoard(state.legs, { sports: sportsFilter(), order: state.totalsOrder === 'time' ? 'time' : 'safe' });
+    const hasAlt = board.some((g) => g.ladder.length);
+    $('totalsNote').innerHTML = hasAlt ? ''
+      : state.mode === 'odds'
+        ? 'Alternate (safer) totals lines aren\'t loaded. Turn on <b>Alternate totals</b> in <a href="#" id="openSet3">Settings</a> to see lower overs and higher unders.'
+        : 'Showing each game\'s main total line. Safer alternate lines (lower overs, higher unders) need a free Odds API key in <a href="#" id="openSet3">Settings</a>.';
+    if (!board.length) { box.innerHTML = '<div class="card empty">No games with over/under lines right now. Try more sports or days.</div>'; renderTotalsParlay(); return; }
+    const pickBtn = (l, label, cls = '') => l ? `<div class="tpick ${cls}">
+        <div class="tl">${label}</div>
+        <div class="tp"><b>${esc(l.pick)}</b> <span class="note">${esc(l.book)}</span></div>
+        <div class="to"><b>${odds(l.price)}</b> <span>${pct(l.prob)}</span>${addBtn(l)}</div></div>` : '';
+    // Safest within the odds limit (and the main-line lean as a fallback).
+    const rows = board.map((g) => {
+      const within = g.legs.filter((l) => l.price >= cap && l.prob <= 0.97).sort((a, b) => b.prob - a.prob || b.price - a.price);
+      return { g, safe: within[0] || null };
+    });
+    if (state.totalsOrder !== 'time') rows.sort((a, b) => (b.safe ? b.safe.prob : 0) - (a.safe ? a.safe.prob : 0));
+    box.innerHTML = rows.map(({ g, safe }) => {
+      const main = g.over && g.under ? `
+        <div class="tmain">
+          <span class="${g.lean === g.over ? 'lean' : ''}">Over ${g.mainPoint} <b>${odds(g.over.price)}</b> ${pct(g.over.prob)}</span>
+          <span class="${g.lean === g.under ? 'lean' : ''}">Under ${g.mainPoint} <b>${odds(g.under.price)}</b> ${pct(g.under.prob)}</span>
+          <span class="note">Market leans <b>${esc(g.lean.pick.split(' ')[0])}</b>${Math.abs(g.over.prob - g.under.prob) < 0.02 ? ' (close to a coin flip)' : ''}</span>
+        </div>` : '';
+      const ladder = g.ladder.length ? `<details class="ladder"><summary>All ${g.ladder.length} alternate lines</summary><div class="picks">${g.ladder.map((l) => `
+          <button type="button" class="pickbtn ${inSlip(l.id) ? 'on' : ''}" data-add="${esc(l.id)}"><span>${esc(l.pick)}</span><b>${odds(l.price)}</b><small>${pct(l.prob)}</small></button>`).join('')}</div></details>` : '';
+      return `<div class="card tgame">
+        <div class="thead"><b>${esc(g.game)}</b> <span class="note">${esc(g.sportTitle)} · ${when(g.commence)}</span></div>
+        ${main}
+        ${pickBtn(safe, state.totalsCap === 'any' ? 'Safest' : `Safest at ${state.totalsCap} or longer`, 'safe')}
+        ${g.value && g.value !== safe ? pickBtn(g.value, 'Best value') : ''}
+        ${ladder}
+      </div>`;
+    }).join('');
+    renderTotalsParlay();
+  }
+
+  // The best totals-only parlay for the goal in the Parlays tab.
+  function renderTotalsParlay() {
+    const box = $('totalsParlay');
+    const g = E.parseGoal($('ask').value);
+    if (g.stake && !g.target) g.target = g.stake * E.RISK_TIERS[(g.risk || 3) - 1].target;
+    if (!g.stake || !g.target || g.target / g.stake < 1.05) { box.innerHTML = ''; return; }
+    const mult = g.target / g.stake;
+    const opts = { ...baseOpts(), types: new Set(['total']) };
+    const cands = E.findParlays(state.legs, mult, { ...opts, count: 3 }).filter((p) => p.exact)
+      .concat(E.findByLegCount(state.legs, mult, { ...opts, maxLegs: 12 }))
+      .sort((a, b) => b.prob - a.prob);
+    const best = cands[0];
+    box.innerHTML = best
+      ? `<h3 class="tsub">Safest totals-only parlay for ${money(g.stake)} → ${money(g.target)}</h3><div class="grid">${parlayCard(best, g.stake, `${best.legs.length} total${best.legs.length > 1 ? 's' : ''}, one per game`)}</div>`
+      : `<p class="note">No totals-only parlay lands on ${money(g.stake)} → ${money(g.target)} with today's lines. Change the goal on the Parlays tab.</p>`;
+  }
+
   function renderTopPicks() {
     const f = sportsFilter();
     const rows = state.legs
@@ -935,7 +1002,7 @@
   }
 
   function refreshPicks() {
-    renderGoal(); renderTopPicks(); renderByo(); renderSlip(); updateCounts();
+    renderGoal(); renderTopPicks(); renderTotals(); renderByo(); renderSlip(); updateCounts();
     const sel = state.selectedTier; if (sel) renderSpectrum();
   }
 
@@ -995,6 +1062,7 @@
     renderGoal();
     renderSpectrum();
     renderTopPicks();
+    renderTotals();
     renderByo();
     renderSlip();
     renderResearch();
@@ -1009,6 +1077,7 @@
     $('apiKey').value = s.apiKey;
     $('regions').value = s.regions;
     $('props').checked = s.props;
+    $('altTotals').checked = s.altTotals !== false;
     $('propGames').value = s.propGames;
     $('refresh').value = s.refresh;
     $('fmt').value = s.fmt;
@@ -1027,6 +1096,7 @@
       sports: state.settings.sports,
       regions: $('regions').value,
       props: $('props').checked,
+      altTotals: $('altTotals').checked,
       propGames: Math.min(15, Math.max(1, Number($('propGames').value) || 3)),
       refresh: Math.min(240, Math.max(2, Number($('refresh').value) || 15)),
       fmt: $('fmt').value,
@@ -1092,7 +1162,7 @@
   }
 
   /* ---------- pages ---------- */
-  const PAGES = ['picks', 'risk', 'top', 'build', 'games', 'track', 'help'];
+  const PAGES = ['picks', 'totals', 'risk', 'top', 'build', 'games', 'track', 'help'];
   function showPage(name, push = true) {
     if (!PAGES.includes(name)) name = 'picks';
     for (const p of PAGES) $('page-' + p).hidden = p !== name;
@@ -1106,6 +1176,7 @@
   function updateCounts() {
     const set = (k, n) => { const el = document.querySelector(`[data-count="${k}"]`); if (el) el.textContent = n ? String(n) : ''; };
     set('build', state.slip.length);
+    set('totals', E.totalsBoard(state.legs, { sports: sportsFilter() }).length);
     set('track', state.bets.filter((b) => b.status === 'pending').length);
     set('games', Object.keys(state.research).filter((id) => state.events.some((e) => e.id === id)).length);
   }
@@ -1194,6 +1265,9 @@
     if (e.target.closest('#fillSlip')) { state.lockSlip = true; state.slipOpen = false; refreshPicks(); showPage('picks'); $('results').scrollIntoView({ block: 'start' }); return; }
     if (e.target.closest('#unlock')) { state.lockSlip = false; refreshPicks(); }
   }, true);
+  $('totalsOrder').addEventListener('change', (e) => { state.totalsOrder = e.target.value; renderTotals(); });
+  $('totalsCap').addEventListener('change', (e) => { state.totalsCap = e.target.value; renderTotals(); });
+  document.addEventListener('click', (e) => { if (e.target.id === 'openSet3') openSettings(e); });
   $('byoSearch').addEventListener('input', (e) => { state.byoQuery = e.target.value; renderByo(); });
   $('legSelect').addEventListener('change', (e) => { state.legCount = Number(e.target.value); renderGoal(); });
   $('daySelect').value = String(state.settings.window || '2');
